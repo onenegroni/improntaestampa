@@ -1,0 +1,6 @@
+{
+  "name": "improntaestampa",
+  "private": true,
+  "scripts": { "build": "node build.js", "deploy": "bash deploy/deploy.sh" },
+  "devDependencies": { "playwright": "^1.65.1", "three": "^0.160.0" }
+}
