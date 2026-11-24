@@ -97,46 +97,87 @@ def subdivide(obj, name):
     bpy.ops.object.modifier_apply(modifier=sub.name)
 
 
-def fit_ease(tee, body):
-    # Ease under the rib cage and through the hem gives the jersey room to fall.
+def relaxed_arm(point):
+    # The fit form's neutral upper and lower arm bind points, in metres.
+    side = math.copysign(1., point.x)
+    shoulder = Vector((side * .170, -.019, 1.320))
+    old_elbow = Vector((side * .331, -.020, 1.140))
+    old_wrist = Vector((side * .453, -.183, 1.016))
+    elbow = Vector((side * (.244 + .005 * side), -.036 - .010 * side, 1.091))
+    wrist = Vector((side * (.246 + .007 * side), -.083 - .012 * side, .884))
+    upper = old_elbow - shoulder
+    forearm = old_wrist - old_elbow
+    first = shoulder + upper.rotation_difference(elbow - shoulder) @ (point - shoulder)
+    second = elbow + forearm.rotation_difference(wrist - elbow) @ (point - old_elbow)
+    bend = smoothstep(-.053, .065, (point - old_elbow).dot(upper.normalized()))
+    weight = smoothstep(.155, .252, abs(point.x))
+    return point.lerp(first.lerp(second, bend), weight)
+
+
+def fit_ease(tee, body, kind):
+    # Both pieces start on the same measured fitting form. Retain room under
+    # the arm and through the waist before settling the cloth under gravity.
     for vertex in body.data.vertices:
-        p = vertex.co
-        easing = .95 + .025 * smoothstep(1.10, 1.32, p.z)
+        p = vertex.co.lerp(relaxed_arm(vertex.co), .67) if kind != 'tank' else vertex.co.copy()
+        easing = .966 + .017 * smoothstep(1.10, 1.32, p.z)
         p.x *= easing
         p.y = -.025 + (p.y + .025) * easing
+        vertex.co = p
     for vertex in tee.data.vertices:
-        p = vertex.co
+        p = vertex.co.copy()
         side = math.copysign(1., p.x)
-        sleeve = smoothstep(.171, .254, abs(p.x))
-        p.x += side * .019 * sleeve
-        p.z -= .027 * sleeve
-        # One forearm rests slightly forward on the form.
-        p.y -= side * sleeve * .013
-        waist = 1. - smoothstep(1.095, 1.32, p.z)
-        p.x += waist * (.004 + (abs(p.x) / .2) * .006) * side
-        p.y += waist * (p.y + .028) * .03
-        p.z += waist * (.006 * p.x / .19)
+        if kind != 'tank':
+            shoulder = Vector((side * .170, -.019, 1.320))
+            upper = Vector((side * .67, -.04, -.73))
+            along = (p - shoulder).dot(upper)
+            sleeve = smoothstep(.028, .112, along) * smoothstep(.167, .220, abs(p.x))
+            # Carry the cut cuff farther down the relaxed upper arm.
+            p = p.lerp(relaxed_arm(p), .67)
+            p += Vector((side * .011, -.006, -.032 - .007 * side)) * sleeve
+            p.y += sleeve * (p.y + .027) * -.075
+        waist = (1. - smoothstep(1.055, 1.25, p.z)) * smoothstep(.881, .97, p.z)
+        p.x += waist * .008 * (abs(p.x) / .18) ** 1.2 * side
+        p.y += waist * (p.y + .022) * .075
+        hem = 1. - smoothstep(.879, .952, p.z)
+        p.z += hem * (.008 * p.x / .19 + .004 * (p.y + .025))
+        if kind == 'tank':
+            shoulder = smoothstep(1.289, 1.37, p.z) * smoothstep(.080, .16, abs(p.x))
+            p.x -= side * .028 * shoulder
+            scoop = smoothstep(1.337, 1.400, p.z) * math.exp(-(p.x / .060)**2)
+            face = smoothstep(-.014, .052, -p.y)
+            p.z -= scoop * (.012 + .037 * face)
+            p.x += side * .012 * smoothstep(1.36, 1.414, p.z) * math.exp(-((abs(p.x) - .052) / .028)**2)
+        vertex.co = p
     tee.data.update()
     body.data.update()
 
 
-def sculpt_drape(tee):
+def cut_sleeves(tee):
+    bm = bmesh.new()
+    bm.from_mesh(tee.data)
+    sleeves = [face for face in bm.faces if face.material_index == 2]
+    bmesh.ops.delete(bm, geom=sleeves, context='FACES')
+    bm.to_mesh(tee.data)
+    bm.free()
+
+
+def sculpt_drape(tee, kind):
     # Fold placement follows the hip support and the sleeve-to-body joins in
     # the catalogue fit. Each entry is an off-centre cloth ridge in metres.
     # A shallow opposing trough lets the fabric turn back onto the form.
     front = (
-        (-.164, .971, -.43, .108, .025, .0128),
-        (-.170, 1.057, -.61, .083, .020, .0124),
-        (-.177, 1.139, -.92, .076, .025, .0105),
-        ( .166, .937,  .37, .094, .021, .0086),
-        ( .170, 1.016,  .75, .095, .031, .0115),
-        ( .177, 1.163,  .74, .061, .020, .0072),
+        (-.172, .974, -.55, .100, .020, .0095),
+        (-.170, 1.059, -.57, .109, .017, .0079),
+        (-.177, 1.166, -.95, .095, .027, .0118),
+        ( .165, .934, .22, .128, .015, .0078),
+        ( .178, 1.030, .49, .079, .026, .0096),
+        ( .181, 1.169, .94, .061, .021, .0068),
     )
     back = (
-        (-.161, .971, -.55, .110, .026, .0115),
-        (-.171, 1.058, -.78, .076, .022, .0115),
-        ( .169, 1.009,  .53, .104, .028, .0130),
-        ( .167, 1.101,  .63, .072, .024, .0080),
+        (-.163, .944, -.40, .129, .018, .0089),
+        (-.170, 1.058, -.66, .089, .021, .0072),
+        ( .171, 1.014, .72, .100, .020, .0108),
+        ( .161, 1.156, .55, .082, .029, .0063),
     )
     shape = []
     for vertex in tee.data.vertices:
@@ -154,9 +195,51 @@ def sculpt_drape(tee):
                 ridge = math.exp(-(dy / width)**2)
                 trough = math.exp(-((dy + width * 1.15) / (width * .84))**2)
                 pressure += envelope * carry * rise * (ridge - .51 * trough)
+        if kind != 'tank':
+            # Compression just below the set-in seam. The two sleeves carry
+            # unequal folds because the arms are supported at different angles.
+            outside = smoothstep(.159, .225, abs(x))
+            crease = z - (1.242 + .018 * x) - .63 * (abs(x) - .195)
+            arm = (math.exp(-(crease / .015)**2) - .72 * math.exp(-((crease + .016) / .014)**2))
+            pressure += outside * (.0043 if x > 0 else .0061) * arm
         shape.append(p + n * pressure)
     for vertex, position in zip(tee.data.vertices, shape):
         vertex.co = position
+    tee.data.update()
+
+
+def finish_openings(tee, kind):
+    # Compress one quadrant of each free cuff and relax the other. The
+    # adjustment tapers into the sewn sleeve, leaving its cap intact.
+    if kind != 'tank':
+        mesh = tee.data
+        for path in edge_loops(mesh):
+            edge = [mesh.vertices[i].co.copy() for i in path]
+            center = sum(edge, Vector()) / len(edge)
+            if abs(center.x) < .137 or center.z < 1.09:
+                continue
+            side = math.copysign(1., center.x)
+            for vertex in mesh.vertices:
+                p = vertex.co
+                if side * p.x < .162 or abs(p.z - center.z) > .10:
+                    continue
+                distance = min((p - point).length for point in edge)
+                weight = 1. - smoothstep(.001, .029, distance)
+                front = smoothstep(-.024, .027, center.y - p.y)
+                under = smoothstep(-.012, .030, center.z - p.z)
+                crease = weight * front * under
+                p.z += .011 * crease
+                p.y += .010 * crease
+                p.x -= .0065 * side * crease
+                p.z -= weight * (1. - front) * .0026
+    if kind == 'kit':
+        # Tuck after settling so the waistband cannot change the shoulder
+        # and chest of the exact same shirt through collision with the form.
+        for vertex in tee.data.vertices:
+            p = vertex.co
+            tuck = 1. - smoothstep(.925, .969, p.z)
+            p.x *= 1. - .166 * tuck
+            p.y = -.026 + (p.y + .026) * (1. - .245 * tuck)
     tee.data.update()
 
 
@@ -185,7 +268,7 @@ def add_print_uv(obj):
     obj.data.uv_layers.active = target
 
 
-def drape(tee, body, frame):
+def drape(tee, body, frame, *, pin=None, limit=.027, heavy=False):
     select(body)
     collision = body.modifiers.new('Invisible fitting form', 'COLLISION')
     collision.settings.thickness_outer = .0028
@@ -203,18 +286,20 @@ def drape(tee, body, frame):
                      smoothstep(1.325, 1.39, z) * at_shoulder * .65)
         if z > 1.38 and abs(x) < .088:
             weight = 1.
+        if pin is not None:
+            weight = pin(vertex.co)
         if weight > .02:
             pins.add([vertex.index], weight, 'REPLACE')
     cloth = tee.modifiers.new('Settled cotton jersey', 'CLOTH')
     settings = cloth.settings
     settings.vertex_group_mass = pins.name
     settings.quality = 9
-    settings.mass = .22
+    settings.mass = .34 if heavy else .22
     settings.air_damping = 1.5
     settings.tension_stiffness = 19.
     settings.compression_stiffness = 18.
     settings.shear_stiffness = 10.
-    settings.bending_stiffness = .165
+    settings.bending_stiffness = .27 if heavy else .135
     settings.tension_damping = 5.
     settings.compression_damping = 5.
     settings.shear_damping = 4.
@@ -242,8 +327,8 @@ def drape(tee, body, frame):
         chest = (1. - smoothstep(.045, .14, abs(original.x))) * smoothstep(1.13, 1.29, original.z)
         drape_weight *= 1. - .64 * chest
         delta = vertex.co - original
-        if delta.length > .026:
-            delta = delta.normalized() * .026
+        if delta.length > limit:
+            delta = delta.normalized() * limit
         vertex.co = original + drape_weight * delta
     tee.data.update()
     bpy.data.objects.remove(body, do_unlink=True)
@@ -350,7 +435,7 @@ def bake_occlusion(mesh, tree):
     return result
 
 
-def export(tee, output):
+def export(tee, output, kind):
     mesh = tee.data
     mesh.calc_loop_triangles()
     uv = mesh.uv_layers['Print']
@@ -413,12 +498,12 @@ def export(tee, output):
     ]
     for path in edge_loops(mesh):
         average = sum((mesh.vertices[index].co for index in path), Vector()) / len(path)
-        if average.z > 1.36:
+        if average.z > 1.33 and abs(average.x) < .095:
             make_band(mesh, path, collar, trim, surface)
             stitch_edge(mesh, path, thread_body, surface, sample_print, offsets=(.015,))
-        elif abs(average.x) > .17:
-            make_band(mesh, path, cuff, trim, surface)
-            stitch_edge(mesh, path, thread_sleeve, surface, sample_print, offsets=(.0107, .0136))
+        elif average.z > 1.10:
+            make_band(mesh, path, collar if kind == 'tank' else cuff, trim, surface)
+            stitch_edge(mesh, path, thread_body if kind == 'tank' else thread_sleeve, surface, sample_print, offsets=(.0107, .0136))
         else:
             colors = []
             for a, b in zip(path, path[1:] + path[:1]):
@@ -490,7 +575,8 @@ def main():
     parser.add_argument('tee', type=Path)
     parser.add_argument('body', type=Path)
     parser.add_argument('output', type=Path)
-    parser.add_argument('--frame', type=int, default=16)
+    parser.add_argument('--frame', type=int, default=18)
+    parser.add_argument('--kind', choices=('tee', 'kit', 'tank'), default='tee')
     args = parser.parse_args(sys.argv[sys.argv.index('--') + 1:])
     bpy.ops.wm.read_factory_settings(use_empty=True)
     tee = import_mesh(args.tee, 'Cloth_tshirt')
@@ -499,14 +585,17 @@ def main():
         tee.data.materials.append(bpy.data.materials.new(label))
     clean_mesh(tee, panels=True)
     clean_mesh(body)
+    if args.kind == 'tank':
+        cut_sleeves(tee)
     subdivide(tee, 'Pattern panels')
-    fit_ease(tee, body)
     add_print_uv(tee)
+    fit_ease(tee, body, args.kind)
     if args.frame > 1:
-        drape(tee, body, args.frame)
+        drape(tee, body, args.frame, limit=.019)
     subdivide(tee, 'Drape refinement')
-    sculpt_drape(tee)
-    export(tee, args.output)
+    sculpt_drape(tee, args.kind)
+    finish_openings(tee, args.kind)
+    export(tee, args.output, args.kind)
 
 
 if __name__ == '__main__':

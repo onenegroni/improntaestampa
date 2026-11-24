@@ -1,17 +1,33 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { unzlibSync } from 'three/examples/jsm/libs/fflate.module.js';
-import asset from './tee.im3d';
+import tee from './tee.im3d';
+import kit from './kit.im3d';
+import tank from './tank.im3d';
+import hoodie from './hoodie.im3d';
+import shorts from './shorts.im3d';
 
 // Blender-baked cut panels. The fit, gravity folds, turned openings, and seam
 // allowances are static. Only the configurator's ink and material maps change.
-const segmentNames = ['torso', 'sleeve', 'punos', 'bodyThread', 'sleeveThread'];
+const top = ['torso', 'sleeve', 'punos', 'bodyThread', 'sleeveThread'];
+const assets = {
+  tee: [tee, top],
+  kit: [kit, top],
+  tank: [tank, top],
+  hoodie: [hoodie, ['torso', 'sleeve', 'punos', 'hood', 'neckTape', 'zipMetal', 'cord', 'bodyThread']],
+  shorts: [shorts, ['short', 'shortPlain', 'punos', 'cord', 'shortThread']],
+};
+const insideNames = {
+  torso: 'facing', sleeve: 'sleeveFacing', hood: 'lining',
+  short: 'shortFacing', shortPlain: 'shortFacing',
+};
 const vertexBytes = 14;
-let panels;
+const cache = new Map();
 
-function decode() {
+function decode(kind) {
+  const [asset, segmentNames] = assets[kind];
   const bytes = unzlibSync(asset);
   const data = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  if (data.getUint32(0) !== 0x49543032) throw new Error('Invalid fitted tee asset');
+  if (data.getUint32(0) !== 0x49543032) throw new Error('Invalid fitted garment asset');
   let offset = 4;
   const decoded = [];
   for (const name of segmentNames) {
@@ -33,6 +49,7 @@ function decode() {
       uv[i * 2] = data.getUint16(offset + 10, true) / 65535;
       uv[i * 2 + 1] = data.getUint16(offset + 12, true) / 65535;
     }
+    if (!indexCount) continue;
     const index = new Uint16Array(indexCount);
     for (let i = 0; i < index.length; i++, offset += 2) index[i] = data.getUint16(offset, true);
     const attributes = {
@@ -43,11 +60,13 @@ function decode() {
     };
     const panel = { name, attributes, index: new THREE.BufferAttribute(index, 1) };
     decoded.push(panel);
-    if (name !== 'torso' && name !== 'sleeve') continue;
-    const inside = position.map((coordinate, i) => coordinate - normal[i] * .00128);
+    const insideName = insideNames[name];
+    if (!insideName) continue;
+    const thickness = kind === 'hoodie' ? .00225 : .00135;
+    const inside = position.map((coordinate, i) => coordinate - normal[i] * thickness);
     const facing = {
       ...panel,
-      name: name === 'sleeve' ? 'sleeveFacing' : 'facing',
+      name: insideName,
       attributes: { ...attributes, position: new THREE.BufferAttribute(inside, 3) },
     };
     decoded.push(facing);
@@ -55,9 +74,9 @@ function decode() {
   return decoded;
 }
 
-export function fittedTeeParts() {
-  if (!panels) panels = decode();
-  return panels.map(({ name, attributes, index }) => {
+export function fittedParts(kind) {
+  if (!cache.has(kind)) cache.set(kind, decode(kind));
+  return cache.get(kind).map(({ name, attributes, index }) => {
     const geometry = new THREE.BufferGeometry();
     for (const [attribute, data] of Object.entries(attributes)) geometry.setAttribute(attribute, data);
     geometry.setIndex(index);

@@ -155,14 +155,6 @@ export function drawPattern(g, preset, base, accentIn, w, h, { seed = 3, k = 1, 
   g.restore();
 }
 
-export function shade(g, W, H) {
-  // Subtle dye variation around the seams and hem.
-  const gr = g.createLinearGradient(0, 0, W, 0);
-  [[0, .09], [.09, 0], [.41, 0], [.5, .09], [.59, 0], [.91, 0], [1, .09]].forEach(([p, a]) => gr.addColorStop(p, `rgba(0,0,0,${a})`));
-  g.fillStyle = gr; g.fillRect(0, 0, W, H);
-  const gv = g.createLinearGradient(0, 0, 0, H); gv.addColorStop(0, 'rgba(0,0,0,.08)'); gv.addColorStop(.12, 'rgba(0,0,0,0)'); gv.addColorStop(.93, 'rgba(0,0,0,0)'); gv.addColorStop(1, 'rgba(0,0,0,.12)');
-  g.fillStyle = gv; g.fillRect(0, 0, W, H);
-}
 function fitText(g, txt, font, maxW, size) { let s = size; g.font = font(s); while (g.measureText(txt).width > maxW && s > 8) { s -= 2; g.font = font(s); } return s; }
 export function imMark(g, x, y, r) {
   g.fillStyle = '#f4f1ec'; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
@@ -199,7 +191,6 @@ export function torsoCanvas(cv, st, { vOf, product }) {
   const W = cv.width, H = cv.height, g = cv.getContext('2d');
   drawPattern(g, st.preset, st.colors.cuerpo, pcols(st), W, H, { seed: 11, k: W / 2048, region: 'body' });
   const Y = y => (1 - vOf(y)) * H;
-  if (product !== 'remera') shade(g, W, H);
   const base = st.preset === 'galactico' ? '#0a0f2a' : (st.preset === 'tiedye' || st.preset === 'manitos') ? '#1b1f3b' : st.colors.cuerpo;
   const t = ink(base), sx = W / 2048;
   g.textBaseline = 'alphabetic';
@@ -226,11 +217,6 @@ export function torsoCanvas(cv, st, { vOf, product }) {
     g.textAlign = 'center'; g.fillStyle = t;
     fitText(g, nm, s => `${s}px Anton`, 150 * sx, 54 * sx); g.fillText(nm, 338 * sx, Y(0.08));
     if (st.logoImg) drawLogo(g, st.logoImg, 650 * sx, Y(0.095), 100 * sx);
-  }
-  // double-needle hem + side seams (subtle, like real cut-and-sewn garments)
-  if (product !== 'remera') {
-    if (product !== 'campera') stitch(g, sx, base, () => { [0.016, 0.022].forEach(d => { g.beginPath(); g.moveTo(0, Y(-0.34 + d)); g.lineTo(W, Y(-0.34 + d)); g.stroke(); }); });
-    g.save(); g.globalAlpha = 0.22; g.strokeStyle = mix(base, '#000000', 0.55); g.lineWidth = 2.5 * sx; [0, W / 2, W].forEach(x => { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }); g.restore();
   }
   const jacket = product === 'campera';
   const numberY = Y(jacket ? -.118 : -.065);
@@ -262,21 +248,6 @@ export function plainCanvas(cv, st, zone, { pattern = false, seed = 5 } = {}) {
   const g = cv.getContext('2d');
   if (pattern && st.preset !== 'liso') drawPattern(g, st.preset, st.colors[zone], pcols(st), cv.width, cv.height, { seed, k: cv.width / 2048, region: 'side' });
   else { g.fillStyle = st.colors[zone]; g.fillRect(0, 0, cv.width, cv.height); }
-}
-export function sleeveCanvas(cv, st, { stripe = true, stitched = false } = {}) {
-  plainCanvas(cv, st, 'mangas', { pattern: st.printAll, seed: 9 });
-  if (stitched) return;
-  const g = cv.getContext('2d'), W = cv.width, H = cv.height;
-  const shade = g.createLinearGradient(0, 0, 0, H * .18);
-  shade.addColorStop(0, 'rgba(10,10,10,.18)');
-  shade.addColorStop(.45, 'rgba(10,10,10,.055)');
-  shade.addColorStop(1, 'rgba(10,10,10,0)');
-  g.fillStyle = shade;
-  g.fillRect(0, 0, W, H * .18);
-  stitch(g, W / 1024, st.colors.mangas, () => {
-    [stripe ? .936 : .967, stripe ? .952 : .982].forEach(y => line(g, 0, y * H, W, y * H));
-    line(g, .748 * W, .20 * H, .748 * W, H);
-  });
 }
 export function hoodCanvas(cv, st) {
   plainCanvas(cv, st, 'capucha', {pattern: st.printAll, seed: 13});

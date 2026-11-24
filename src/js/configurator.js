@@ -3,7 +3,7 @@ import * as THREE from './vendor/three.module.min.js';
 import { RoomEnvironment } from './vendor/RoomEnvironment.js';
 import * as G from './garments.js';
 import * as T from './textures.js';
-import { fittedTeeParts } from './models/fitted-tee.js';
+import { fittedParts } from './models/fitted-garments.js';
 // CC0 textile scans by colormass and Rico Cilliers, published by Poly Haven.
 import jerseyNormal from './fabric-scans/jersey-normal.webp';
 import jerseySurface from './fabric-scans/jersey-surface.webp';
@@ -18,7 +18,7 @@ import sportsGrain from './fabric-scans/sports-grain.webp';
 const TEX = { visor: [768, 384], torso: [2048, 1024], sleeve: [1024, 512], hood: [1024, 512], short: [1024, 512], shortPlain: [1024, 512], flag: [2048, 1365], cap: [1024, 512] };
 const ZONE_MATERIALS = {
   cuerpo: ['torso', 'flag', 'cap', 'facing'],
-  short: ['short', 'shortPlain'],
+  short: ['short', 'shortPlain', 'shortFacing'],
   mangas: ['sleeve', 'sleeveFacing', 'visor'],
   capucha: ['hood', 'lining'],
   punos: ['punos', 'cord'],
@@ -81,16 +81,17 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   const darkM = new THREE.MeshStandardMaterial({ color: 0x262823, roughness: 0.65, metalness: 0.1 });
 
   const fabrics = {
-    deportiva: { kind: 'mesh', sources: [sportsNormal, sportsSurface, sportsGrain], roughness: .96, sheen: .15, sheenRoughness: .78, scale: .62, spec: .24 },
-    modal: { kind: 'jersey', sources: [jerseyNormal, jerseySurface, jerseyGrain], roughness: .98, sheen: .21, sheenRoughness: .87, scale: .68, spec: .15 },
-    frizado: { kind: 'fleece', sources: [fleeceNormal, fleeceSurface, fleeceGrain], roughness: .98, sheen: .25, sheenRoughness: .91, scale: .47, spec: .10 },
+    deportiva: { kind: 'mesh', sources: [sportsNormal, sportsSurface, sportsGrain], roughness: .92, sheen: .17, sheenRoughness: .76, scale: .69, spec: .22 },
+    modal: { kind: 'jersey', sources: [jerseyNormal, jerseySurface, jerseyGrain], roughness: .97, sheen: .21, sheenRoughness: .87, scale: .76, spec: .14 },
+    frizado: { kind: 'fleece', sources: [fleeceNormal, fleeceSurface, fleeceGrain], roughness: .98, sheen: .26, sheenRoughness: .90, scale: .57, spec: .10 },
   };
   const panelRepeats = {
     torso: [3.3, 1.9], sleeve: [1.34, .59], longSleeve: [1.36, 1.46],
     hood: [1.74, .89], lining: [1.74, .89], short: [1.45, 1.54], shortPlain: [1.45, 1.54],
   };
   const panelFor = (part, product) => {
-    if (part === 'sleeveFacing') return 'sleeve';
+    if (part === 'sleeveFacing') return product === 'campera' ? 'longSleeve' : 'sleeve';
+    if (part === 'shortFacing') return 'short';
     if (part === 'sleeve' && product === 'campera') return 'longSleeve';
     return part;
   };
@@ -180,45 +181,10 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   const vOf = y => { const { yHem, yS } = G.TORSO; return G.clamp(0.8 * (y - yHem) / (yS - yHem), 0, 1); };
 
   function clearGroup(gr) { for (const child of gr.children) child.traverse(object => object.geometry?.dispose()); gr.clear(); }
-  // Front and back depths trace cross-sections of the CC0 MakeHuman form
-  // and fitted garments. Widths retain the catalog fit of each product.
-  // https://github.com/kblood/CharacterCreator/blob/master/LICENSE-NOTES.md
-  const cuts = {
-    conjunto: {
-      width: [[-.34,.145],[-.275,.161],[-.195,.159],[-.055,.172],[.085,.191],[.205,.199]],
-      frontDepth: [[-.34,.076],[-.241,.104],[-.092,.112],[.018,.109],[.071,.100],[.115,.088],[.154,.075],[.197,.058],[.248,.049]],
-      backDepth: [[-.34,.082],[-.235,.095],[-.098,.091],[.023,.103],[.096,.105],[.154,.096],[.208,.078],[.248,.055]],
-      neckK: .39, neckDrop: .059, slope: .24, wrinkle: .87, tucked: true,
-    },
-    musculosa: {
-      width: [[-.34,.167],[-.257,.163],[-.109,.154],[.024,.170],[.146,.184],[.205,.185]],
-      frontDepth: [[-.34,.085],[-.224,.095],[-.090,.101],[.019,.105],[.072,.102],[.117,.092],[.162,.075],[.207,.060],[.248,.051]],
-      backDepth: [[-.34,.083],[-.192,.084],[-.067,.087],[.036,.097],[.099,.100],[.151,.095],[.201,.077],[.248,.054]],
-      neckK: .42, neckDrop: .091, slope: .21, wrinkle: .74, tank: true,
-    },
-    campera: {
-      width: [[-.34,.172],[-.283,.184],[-.187,.186],[-.052,.187],[.074,.200],[.205,.209]],
-      frontDepth: [[-.34,.112],[-.265,.126],[-.136,.126],[-.036,.124],[.043,.120],[.094,.112],[.142,.098],[.192,.075],[.248,.059]],
-      backDepth: [[-.34,.106],[-.209,.103],[-.076,.104],[.038,.113],[.103,.116],[.147,.110],[.192,.096],[.248,.065]],
-      neckK: .42, neckDrop: .056, slope: .238, wrinkle: .81, heavy: true,
-    },
-  };
-  const tailoring = new Map();
-  function getTailoring(kind) {
-    if (tailoring.has(kind)) return tailoring.get(kind);
-    const fn = G.torsoFn(cuts[kind]);
-    const holes = [-1, 1].map(side => G.armhole(fn, side, { long: kind === 'campera', tank: kind === 'musculosa' }));
-    const cut = {fn, holes};
-    tailoring.set(kind, cut);
-    return cut;
-  }
-
   const hangs = [];
-  const pullMetal = new THREE.MeshStandardMaterial({ color: 0x555453, metalness: .58, roughness: .31 });
   const zipTeeth = new THREE.MeshStandardMaterial({ color: 0x2a2928, metalness: .16, roughness: .52 });
   const strapMaterial = new THREE.MeshStandardMaterial({ color: 0x262622, roughness: .83, side: THREE.DoubleSide });
   const roughHardware = new THREE.MeshStandardMaterial({ color: 0xa3a29c, metalness: .69, roughness: .38 });
-  const zipThread = new THREE.MeshStandardMaterial({ color: 0x44413e, roughness: .96, envMapIntensity: .24 });
 
   function seamMaterial(name) {
     const material = own(new THREE.MeshStandardMaterial({
@@ -243,7 +209,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     material.onBeforeCompile = shader => {
       shader.uniforms.improntaCloth = cloth;
       shader.uniforms.improntaRelief = relief;
-      shader.uniforms.improntaTile = { value: new THREE.Vector2(...panelRepeats[name]) };
+      shader.uniforms.improntaTile = { value: new THREE.Vector2(...panelRepeats[panelFor(name, state.producto)]) };
       shader.fragmentShader = shader.fragmentShader.replace('#include <map_pars_fragment>',
         `#include <map_pars_fragment>
          uniform sampler2D improntaCloth;
@@ -257,171 +223,51 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     return material;
   }
 
-  function buildFittedTee() {
+  function buildFittedGarment(kind, y = 0) {
     const group = new THREE.Group();
+    group.position.y = y;
     const side = THREE.FrontSide;
-    parts.torso = fittedFabric('torso', side);
-    parts.sleeve = fittedFabric('sleeve', side);
-    parts.punos = colorMat(state.colors.punos, { side });
-    parts.facing = fabricMat(null, { side: THREE.BackSide });
-    parts.sleeveFacing = fabricMat(null, { side: THREE.BackSide });
-    parts.bodyThread = own(new THREE.MeshStandardMaterial({
-      map: texes.torso, side, roughness: .98, vertexColors: true,
+    const fabric = name => fittedFabric(name, side);
+    const inside = () => fabricMat(null, { side: THREE.BackSide });
+    const stitches = map => own(new THREE.MeshStandardMaterial({
+      map, side, roughness: .98, vertexColors: true,
     }));
-    parts.sleeveThread = own(parts.bodyThread.clone());
-    parts.sleeveThread.map = texes.sleeve;
-    for (const { name, geometry } of fittedTeeParts()) {
-      const panel = mesh(geometry, parts[name]);
-      panel.castShadow = name === 'torso' || name === 'sleeve' || name === 'punos';
-      group.add(panel);
-    }
-    return group;
-  }
-
-  function buildTop(kind, yOff = 0) {
-    const group = new THREE.Group();
-    group.position.y = yOff;
-    const tank = kind === 'musculosa', long = kind === 'campera';
-    const { fn, holes } = getTailoring(kind);
-    const cut = (u, v) => Math.min(holes[0].clip(u, v), holes[1].clip(u, v));
-    const body = G.surface(lowPower ? 190 : 264, lowPower ? 132 : 174, fn, {
-      wrapU: true,
-      clip: cut,
-      uvFn: fn.uv,
-      shade: (u, v) => {
-        const arm = Math.exp(-Math.max(0, cut(u, v)) * 4.6);
-        const lowerArm = 1 - THREE.MathUtils.smoothstep(v, .68, .93);
-        const lip = 1 - THREE.MathUtils.smoothstep(v, 0, .12);
-        return 1 - (.034 + .088 * lowerArm) * arm - lip * .052;
-      },
-    });
-    const bodyMaterial = parts.torso = fabricMat(texes.torso);
-    if (tank) {
-      bodyMaterial.onBeforeCompile = shader => {
-        shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>',
-          '#include <map_fragment>\nif (!gl_FrontFacing) diffuseColor.rgb *= 0.57;');
-      };
-    }
-    const trim = parts.punos = colorMat(state.colors.punos);
-    const facing = parts.facing = fabricMat(null);
-    group.add(mesh(body, bodyMaterial));
-    for (const atNeck of [true, false]) {
-      const inside = mesh(G.facing(fn, atNeck), facing);
-      inside.castShadow = false;
-      group.add(inside);
-    }
-    if (!long) group.add(mesh(G.collar(fn, { h: tank ? .008 : .017 }), trim));
-
-    const bodySeams = holes.map(hole => hole.threadPath);
-    const trimSeams = [];
-    if (!long) {
-      bodySeams.push(...[.026, .042].map(v => G.edgeSeam(fn, v)));
-      bodySeams.push(G.edgeSeam(fn, .976));
-    }
-    if (tank) {
-      for (const hole of holes) group.add(mesh(G.boundArmhole(hole), trim));
-    } else {
-      const sleeveMaterial = parts.sleeve = fabricMat(texes.sleeve);
-      const sleeveSeams = [];
-      for (const [i, side] of [-1, 1].entries()) {
-        const arm = G.sleeve(side, holes[i], { long, sport: kind === 'conjunto' });
-        group.add(mesh(arm.shell, sleeveMaterial), mesh(arm.trim, trim));
-        sleeveSeams.push(arm.sleeveThread);
-        trimSeams.push(arm.trimThread);
+    const makeMaterial = {
+      torso: () => fabric('torso'),
+      sleeve: () => fabric('sleeve'),
+      short: () => fabric('short'),
+      shortPlain: () => fabric('shortPlain'),
+      hood: () => fabric('hood'),
+      facing: inside,
+      sleeveFacing: inside,
+      shortFacing: inside,
+      lining: inside,
+      punos: () => colorMat(state.colors.punos, { side }),
+      cord: () => colorMat(state.colors.punos, { side }),
+      bodyThread: () => stitches(texes.torso),
+      sleeveThread: () => stitches(texes.sleeve),
+      shortThread: () => stitches(texes.shortPlain),
+      neckTape: () => own(new THREE.MeshStandardMaterial({
+        color: 0x232320, roughness: .92, normalMap: rib, side, vertexColors: true,
+      })),
+      zipMetal: () => zipTeeth,
+    };
+    for (const { name, geometry } of fittedParts(kind)) {
+      const material = parts[name] || (parts[name] = makeMaterial[name]());
+      const panel = mesh(geometry, material);
+      panel.castShadow = !name.endsWith('Thread') && material.side !== THREE.BackSide;
+      if (kind === 'hoodie' && name === 'cord') {
+        geometry.computeBoundingBox();
+        const bounds = geometry.boundingBox;
+        const pivot = new THREE.Group();
+        pivot.position.set(0, bounds.max.y, (bounds.min.z + bounds.max.z) * .5);
+        panel.position.copy(pivot.position).negate();
+        pivot.add(panel);
+        hangs.push({ node: pivot, rest: 0, strength: .13, phase: .23 });
+        group.add(pivot);
+      } else {
+        group.add(panel);
       }
-      addThread(group, sleeveSeams, seamMaterial('sleeveThread'), { radius: .00042 });
-    }
-
-    if (long) {
-      const hood = G.hood(fn);
-      const hoodMaterial = parts.hood = fabricMat(texes.hood);
-      const lining = parts.lining = fabricMat(null);
-      const interior = mesh(hood.inner, lining);
-      interior.castShadow = false;
-      const seamTape = mesh(hood.insideSeam, lining);
-      seamTape.castShadow = false;
-      group.add(mesh(hood.outer, hoodMaterial), interior, seamTape, ...hood.edges.map(geo => mesh(geo, lining)));
-      addThread(group, hood.crownThread, seamMaterial('hoodThread'), { pitch: .0036, radius: .00046 });
-      const waistShape = (u, v) => {
-        const point = fn(u, 0);
-        const roll = .009 * Math.sin(v * Math.PI);
-        const gather = .0040 * Math.cos(u * G.TAU * 30) * Math.sin(v * Math.PI) ** 2;
-        const inset = .949 + .054 * v + roll + gather;
-        return [point[0] * inset, point[1] - .048 + v * .050, point[2] * inset];
-      };
-      group.add(mesh(G.surface(160, 16, waistShape, {
-        wrapU: true, shade: (u, v) => 1 - .13 * Math.pow(1 - v, 3),
-      }), trim));
-      trimSeams.push(G.edgeSeam(waistShape, .78));
-      const zipper = G.zipperParts(fn);
-      const tape = own(new THREE.MeshStandardMaterial({
-        color: 0x1c1d1b, roughness: .93, normalMap: rib,
-        normalScale: new THREE.Vector2(.25, .25), side: THREE.DoubleSide,
-      }));
-      group.add(mesh(zipper.tape, tape), mesh(zipper.teeth, zipTeeth));
-      addThread(group, zipper.seams, zipThread, { pitch: .0034, radius: .00042 });
-      const [x, y, z] = zipper.top;
-      const slider = mesh(new THREE.BoxGeometry(.0095, .012, .005), pullMetal);
-      slider.position.set(x, y - .005, z + .007);
-      group.add(slider);
-      const pull = mesh(G.zipperPull(), pullMetal);
-      pull.position.set(x, y - .008, z + .011);
-      pull.rotation.x = -.18;
-      hangs.push({ node: pull, rest: -.18, strength: .12, phase: 0 });
-      group.add(pull);
-      const stop = mesh(new THREE.BoxGeometry(.008, .004, .004), zipTeeth);
-      stop.position.set(zipper.bottom[0], zipper.bottom[1], zipper.bottom[2] + .004);
-      group.add(stop);
-
-      for (const side of [-1, 1]) {
-        const pocket = G.pocket(fn, side);
-        group.add(mesh(pocket.shell, bodyMaterial), mesh(pocket.edge, bodyMaterial));
-        bodySeams.push(...pocket.stitches);
-        const eyelet = new THREE.Vector3(...hood.eyelet(side));
-        const ring = mesh(new THREE.TorusGeometry(.0040, .00092, 10, 24), roughHardware);
-        ring.position.copy(eyelet).add(new THREE.Vector3(0, 0, .0016));
-        ring.rotation.x = -.24;
-        group.add(ring);
-
-        // The grommet is the fixed pivot. The braiding and metal aglet move with the cord.
-        const knot = new THREE.Group();
-        knot.position.copy(eyelet);
-        const length = .133 + side * .009;
-        const end = new THREE.Vector3(side * .012, -length, .038);
-        const cord = new THREE.CatmullRomCurve3([
-          new THREE.Vector3(0, 0, .001),
-          new THREE.Vector3(side * -.008, -.032, .020),
-          new THREE.Vector3(side * .008, -.077, .034),
-          end,
-        ]);
-        const cordMaterial = parts.cord || (parts.cord = colorMat(state.colors.punos));
-        const braided = new THREE.TubeGeometry(cord, 46, .00225, 10);
-        knot.add(mesh(braided, cordMaterial));
-        const tip = mesh(new THREE.CylinderGeometry(.00235, .00215, .013, 14), roughHardware);
-        tip.position.copy(end).add(new THREE.Vector3(0, -.005, .0005));
-        tip.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), cord.getTangent(1).negate());
-        knot.add(tip);
-        hangs.push({ node: knot, rest: 0, strength: .16, phase: side * .32 });
-        group.add(knot);
-      }
-    }
-    addThread(group, bodySeams, seamMaterial('bodyThread'), { radius: .00043 });
-    if (trimSeams.length) addThread(group, trimSeams, seamMaterial('trimThread'), { pitch: .0038 });
-    return group;
-  }
-
-  function buildShort(yOff) {
-    const garment = G.short();
-    const group = new THREE.Group();
-    group.position.y = yOff;
-    const numbered = parts.short = fabricMat(texes.short);
-    const plain = parts.shortPlain = fabricMat(texes.shortPlain);
-    group.add(mesh(garment.top, plain), ...garment.left.shells.map(geo => mesh(geo, plain)));
-    group.add(...garment.right.shells.map(geo => mesh(geo, numbered)), mesh(garment.band, parts.punos));
-    addThread(group, [...garment.left.seam, ...garment.right.seam], seamMaterial('shortThread'), { radius: .00041 });
-    for (const path of garment.cords) {
-      const curve = new THREE.CatmullRomCurve3(path.map(point => new THREE.Vector3(...point)));
-      group.add(mesh(new THREE.TubeGeometry(curve, 22, .00235, 8), parts.punos));
     }
     return group;
   }
@@ -450,22 +296,25 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     flag = null;
     hangs.length = 0;
     const P = state.producto;
-    const fitted = P === 'remera';
-    key.intensity = fitted ? 2.08 : 1.62;
-    key.shadow.bias = fitted ? -.00012 : -.00021;
-    key.shadow.normalBias = fitted ? .0018 : .0044;
-    fill.intensity = fitted ? .49 : .76;
-    rim.intensity = fitted ? .63 : .76;
+    const fitted = P !== 'bandera' && P !== 'gorra';
+    key.intensity = fitted ? 2.14 : 1.62;
+    key.color.setHex(fitted ? 0xfffcf9 : 0xfff8f3);
+    key.shadow.bias = fitted ? -.00009 : -.00021;
+    key.shadow.normalBias = fitted ? .0015 : .0044;
+    fill.intensity = fitted ? .45 : .76;
+    rim.intensity = fitted ? .66 : .76;
     product.rotation.set(0, 0, 0);
     product.position.set(0, 0, 0);
     paintTextures();
     if (P === 'remera') {
-      product.add(buildFittedTee());
-    } else if (P === 'musculosa' || P === 'campera') {
-      product.add(buildTop(P));
+      product.add(buildFittedGarment('tee'));
+    } else if (P === 'musculosa') {
+      product.add(buildFittedGarment('tank'));
+    } else if (P === 'campera') {
+      product.add(buildFittedGarment('hoodie'));
     } else if (P === 'conjunto') {
       // The jersey tucks into the shorts with the elastic band in front.
-      product.add(buildTop('conjunto', .20), buildShort(-.157));
+      product.add(buildFittedGarment('kit', .14), buildFittedGarment('shorts', .14));
     } else if (P === 'bandera') {
       const [width, height] = state.talle.split('×').map(parseFloat);
       const clothHeight = Math.min(.8, 1.2 * (height / width || .64));
@@ -574,7 +423,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     if (need.includes('torso')) {
       T.torsoCanvas(get('torso'), st, { vOf, product: P });
     }
-    if (need.includes('sleeve')) T.sleeveCanvas(get('sleeve'), st, { stripe: P !== 'campera', stitched: P === 'remera' });
+    if (need.includes('sleeve')) T.plainCanvas(get('sleeve'), st, 'mangas', { pattern: st.printAll, seed: 9 });
     if (need.includes('hood')) T.hoodCanvas(get('hood'), st);
     if (need.includes('short')) T.shortCanvas(get('short'), st, get('shortPlain'));
     if (need.includes('flag')) T.flagCanvas(get('flag'), st);
@@ -586,7 +435,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     for (const name of need) {
       const canvas = get(name);
       const repeat = panelRepeats[panelFor(name, P)];
-      if (P === 'remera' && fabric.grainTexture) continue;
+      if (!fixed && fabric.grainTexture) continue;
       const scan = !fixed && fabric.grain && { image: fabric.grain, repeat };
       T.applyWeave(canvas, weave, canvas.width / TEX[name][0], scan);
     }
@@ -599,6 +448,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     if (parts.cord) list.push([parts.cord.color, new THREE.Color(st.colors.punos)]);
     if (parts.lining) list.push([parts.lining.color, new THREE.Color(st.colors.capucha).lerp(new THREE.Color('#847d73'), .07).multiplyScalar(.77)]);
     if (parts.facing) list.push([parts.facing.color, new THREE.Color(st.colors.cuerpo).multiplyScalar(.71)]);
+    if (parts.shortFacing) list.push([parts.shortFacing.color, new THREE.Color(st.colors.short).multiplyScalar(.67)]);
     if (parts.sleeveFacing) list.push([parts.sleeveFacing.color, new THREE.Color(st.colors.mangas).multiplyScalar(.71)]);
     const seamZones = { bodyThread: 'cuerpo', shortThread: 'short', sleeveThread: 'mangas', trimThread: 'punos', hoodThread: 'capucha' };
     for (const [key, zone] of Object.entries(seamZones)) {
@@ -613,7 +463,8 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       const grainLayer = material.userData.clothGrain;
       if (grainLayer) {
         grainLayer.cloth.value = f.grainTexture || null;
-        grainLayer.relief.value = f.grainTexture ? 1.28 : 0;
+        grainLayer.relief.value = f.grainTexture ? 1.52 : 0;
+        material.anisotropy = !lowPower && f.kind === 'mesh' ? .16 : 0;
       }
       if (!material.normalMap) continue;
       const accessory = name === 'cap' || name === 'visor' || name === 'flag';
@@ -629,7 +480,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       material.specularIntensity = accessory ? .22 : f.spec;
       material.sheenRoughness = f.sheenRoughness;
       if (!ribbed) material.normalMap = swatch.normal;
-      const grain = ribbed ? .34 : name === 'flag' ? .20 : accessory ? .30 : f.panels ? f.scale : .34;
+      const grain = ribbed ? .43 : name === 'flag' ? .20 : accessory ? .30 : f.panels ? f.scale : .34;
       material.normalScale.set(grain, grain);
     }
     return list;
