@@ -37,7 +37,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   canvasHost.appendChild(renderer.domElement);
   const scene = new THREE.Scene();
   const cam = new THREE.PerspectiveCamera(26, 1, 0.05, 30);
-  const key = new THREE.DirectionalLight(0xfff7ef, 2.17);
+  const key = new THREE.DirectionalLight(0xfff7ef, 1.96);
   key.position.set(-2.8, 3.7, 3.9);
   key.castShadow = true;
   const LIVE_SM = lowPower ? 512 : 1024;
@@ -50,10 +50,10 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   const rim = new THREE.DirectionalLight(0xf4f7ff, 1.04);
   rim.position.set(1.8, 1.55, -2.6);
   scene.add(rim);
-  const fill = new THREE.DirectionalLight(0xfffcf6, .52);
-  fill.position.set(2.2, 0.5, 2);
+  const fill = new THREE.DirectionalLight(0xfffcf6, .69);
+  fill.position.set(1.35, .72, 3.4);
   scene.add(fill);
-  scene.add(new THREE.HemisphereLight(0xf8f7f2, 0x8b8374, .40));
+  scene.add(new THREE.HemisphereLight(0xf8f7f2, 0x8b8374, .46));
 
   const spin = new THREE.Group(); scene.add(spin);
   const anim = new THREE.Group(); spin.add(anim);
@@ -121,33 +121,32 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   const vOf = y => { const { yHem, yS } = G.TORSO; return G.clamp(0.8 * (y - yHem) / (yS - yHem), 0, 1); };
 
   function clearGroup(gr) { for (const child of gr.children) child.traverse(object => object.geometry?.dispose()); gr.clear(); }
-  // Fitting marks are in scene units from the hem to the shoulder.
-  // Tee cross sections adapt the MakeHuman system tee (CC0), fitted by CharacterCreator:
-  // https://github.com/kblood/CharacterCreator/blob/master/LICENSE-NOTES.md
+  // Half-widths follow the catalog silhouettes at the hem, waist, ribs and
+  // shoulder. Depths describe the cloth resting over the torso in each cut.
   const cuts = {
     remera: {
-      width: [[-.34,.194],[-.236,.188],[-.139,.181],[-.043,.184],[.084,.197],[.205,.205]],
-      frontDepth: [[-.34,.112],[-.23,.124],[-.075,.120],[.079,.113],[.205,.080]],
-      backDepth: [[-.34,.114],[-.23,.094],[-.075,.084],[.079,.102],[.205,.080]],
-      neckK: .35, neckKZ: .74, neckDrop: .056, slope: .23, wrinkle: 1.12,
+      width: [[-.34,.164],[-.264,.159],[-.160,.151],[-.055,.155],[.064,.172],[.152,.181],[.205,.182]],
+      frontDepth: [[-.34,.083],[-.244,.096],[-.096,.106],[.015,.122],[.112,.139],[.164,.128],[.205,.098]],
+      backDepth: [[-.34,.089],[-.228,.102],[-.076,.092],[.028,.109],[.113,.119],[.205,.090]],
+      neckK: .41, neckKZ: .75, neckDrop: .058, slope: .262, wrinkle: 1.10,
     },
     conjunto: {
-      width: [[-.34,.148],[-.266,.171],[-.196,.176],[-.062,.186],[.094,.205],[.205,.202]],
-      frontDepth: [[-.34,.062],[-.256,.080],[-.18,.094],[.023,.111],[.126,.111],[.205,.076]],
-      backDepth: [[-.34,.060],[-.263,.069],[-.17,.078],[.023,.093],[.126,.094],[.205,.068]],
-      neckK: .35, neckKZ: .73, neckDrop: .062, slope: .26, wrinkle: .92,
+      width: [[-.34,.145],[-.275,.162],[-.195,.159],[-.055,.169],[.085,.191],[.205,.199]],
+      frontDepth: [[-.34,.078],[-.239,.098],[-.088,.106],[.021,.125],[.115,.137],[.205,.093]],
+      backDepth: [[-.34,.078],[-.244,.105],[-.089,.092],[.030,.111],[.115,.120],[.205,.085]],
+      neckK: .39, neckKZ: .75, neckDrop: .060, slope: .265, wrinkle: .96, tucked: true,
     },
     musculosa: {
-      width: [[-.34,.177],[-.246,.170],[-.100,.159],[.045,.180],[.144,.191],[.205,.193]],
-      frontDepth: [[-.34,.056],[-.169,.067],[.026,.096],[.126,.097],[.205,.074]],
-      backDepth: [[-.34,.051],[-.169,.064],[.026,.080],[.126,.082],[.205,.062]],
-      neckK: .45, neckKZ: .76, neckDrop: .118, slope: .23, wrinkle: .92, tank: true,
+      width: [[-.34,.168],[-.257,.164],[-.109,.151],[.024,.172],[.146,.187],[.205,.187]],
+      frontDepth: [[-.34,.078],[-.213,.091],[-.082,.090],[.010,.109],[.094,.124],[.205,.089]],
+      backDepth: [[-.34,.076],[-.192,.080],[-.072,.083],[.041,.103],[.133,.113],[.205,.082]],
+      neckK: .42, neckKZ: .72, neckDrop: .091, slope: .22, wrinkle: .80, tank: true,
     },
     campera: {
-      width: [[-.34,.190],[-.276,.208],[-.172,.210],[-.038,.204],[.105,.217],[.205,.220]],
-      frontDepth: [[-.34,.091],[-.25,.112],[-.09,.107],[.103,.116],[.205,.089]],
-      backDepth: [[-.34,.103],[-.21,.101],[-.045,.102],[.107,.104],[.205,.085]],
-      neckK: .42, neckKZ: .75, neckDrop: .056, slope: .26, wrinkle: .92, heavy: true,
+      width: [[-.34,.172],[-.283,.184],[-.187,.185],[-.052,.184],[.074,.200],[.205,.209]],
+      frontDepth: [[-.34,.105],[-.259,.123],[-.095,.107],[.023,.130],[.118,.142],[.205,.107]],
+      backDepth: [[-.34,.102],[-.201,.111],[-.063,.101],[.040,.116],[.141,.130],[.205,.094]],
+      neckK: .42, neckKZ: .76, neckDrop: .059, slope: .26, wrinkle: .87, heavy: true,
     },
   };
   const tailoring = new Map();
@@ -323,6 +322,10 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     group.add(mesh(garment.top, plain), ...garment.left.shells.map(geo => mesh(geo, plain)));
     group.add(...garment.right.shells.map(geo => mesh(geo, numbered)), mesh(garment.band, parts.punos));
     addThread(group, [...garment.left.seam, ...garment.right.seam], parts.bodyThread, { radius: .00041 });
+    for (const path of garment.cords) {
+      const curve = new THREE.CatmullRomCurve3(path.map(point => new THREE.Vector3(...point)));
+      group.add(mesh(new THREE.TubeGeometry(curve, 22, .00235, 8), parts.punos));
+    }
     return group;
   }
 
@@ -357,7 +360,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       product.add(buildTop(P));
     } else if (P === 'conjunto') {
       // The jersey tucks into the shorts with the elastic band in front.
-      product.add(buildTop('conjunto', .20), buildShort(-.153));
+      product.add(buildTop('conjunto', .20), buildShort(-.157));
     } else if (P === 'bandera') {
       const [width, height] = state.talle.split('×').map(parseFloat);
       const clothHeight = Math.min(.8, 1.2 * (height / width || .64));

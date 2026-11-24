@@ -168,9 +168,8 @@ export function edgeSeam(sample, v) {
 
 const crease = (distance, width) => Math.exp(-Math.pow(distance / width, 2));
 
-/* ---------------- TORSO ----------------
-   A shirt hanging on a dress form: straight drop from chest to hem, defined shoulders that slope ~18deg
-   to the neck, flat front panel, slightly fuller back, and a few believable folds (armpit, waist, hem). */
+/* Torso sections follow the rib cage, shoulder blades, waist and pelvis.
+   The visible surface adds fabric ease and tension folds around that form. */
 export const TORSO = { yHem: -0.34, yS: 0.165, H: 0.072, yNeck: 0.248 };
 const smin = (a, b, k) => { const h = clamp(0.5 + 0.5 * (b - a) / k, 0, 1); return lerp(b, a, h) - k * h * (1 - h); };
 const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
@@ -179,84 +178,88 @@ export function torsoFn(o) {
   const { width: widthP, frontDepth: bfP, backDepth: bbP } = o;
   const kx = o.neckK, kz = o.neckKZ;
   const drop = o.neckDrop, slope = o.slope, yA = 0.03;
-  const wr = o.wrinkle, nx = 3.3;
+  const wr = o.wrinkle, nx = 2.76;
   const heavy = o.heavy === true;
   const yN = th => {
     const front = Math.cos(th);
-    return yNeck - drop * Math.pow(Math.max(0, front), o.tank ? .81 : 1.44)
-      - (o.tank ? .040 : .017) * Math.max(0, -front) ** 1.5
-      - (o.tank ? .029 : .0075) * (1 - front * front) ** 2;
+    return yNeck - drop * Math.pow(Math.max(0, front), o.tank ? 1.09 : 1.44)
+      - (o.tank ? .027 : .017) * Math.max(0, -front) ** 1.5
+      - (o.tank ? .021 : .0075) * (1 - front * front) ** 2;
+  };
+  const section = (u, y) => {
+    const angle = (u - .25) * TAU;
+    const across = Math.sin(angle), depth = Math.cos(angle);
+    const width = prof(widthP, y);
+    const volume = prof(depth > 0 ? bfP : bbP, y);
+    const depthCurve = lerp(1.07, .89, sstep(-.18, .13, y));
+    return [
+      width * Math.sign(across) * Math.abs(across) ** (2 / nx),
+      volume * Math.sign(depth) * Math.abs(depth) ** depthCurve,
+      across,
+      depth,
+    ];
   };
   const fn = (u, v) => {
-    const th = (u - 0.25) * TAU, c = Math.cos(th), s = Math.sin(th);
-    const yTopN = yN(th), yl = lerp(yHem, yTopN, v);
+    const angle = (u - .25) * TAU;
+    const yTopN = yN(angle), yl = lerp(yHem, yTopN, v);
     const q = clamp((yl - yA) / (yTopN - yA), 0, 1);
-    // Keep the shoulder width through the sleeve seam, then turn the top panel
-    // inward across the shoulder to the neck binding.
-    const shoulderTravel = .783 + .129 * Math.abs(s) ** 1.38;
-    const sa = lerp(1, kx, sstep(shoulderTravel, 1, v));
-    const sb = lerp(1, kz, sstep(.30, 1, q));
-    const yy = Math.min(yl, .205);
-    const a = prof(widthP, yy), b = c > 0 ? prof(bfP, yy) : prof(bbP, yy);
-    let x = a * sa * Math.sign(s) * Math.pow(Math.abs(s), 2 / nx);
-    let z = b * sb * Math.sign(c) * Math.pow(Math.abs(c), 2 / 2.2);
-    // shoulder line caps the height, so the top reads as a sloped plane, not a dome
+    const [sectionX, sectionZ, s, c] = section(u, Math.min(yl, .205));
+    // The section stays wide through the armhole and turns over the deltoids
+    // before joining the neckline. Front and rear retain separate depths.
+    const shoulderTravel = .781 + .130 * Math.abs(s) ** 1.38;
+    let x = sectionX * lerp(1, kx, sstep(shoulderTravel, 1, v));
+    let z = sectionZ * lerp(1, kz, sstep(.43, 1, q));
     const ax = Math.abs(x);
     const shoulder = Math.max(0, ax - .073);
-    const yTop = yNeck - slope * shoulder - .013 * sstep(.155, .218, ax)
-      - .011 * Math.abs(c) * sstep(.089, .17, ax);
-    let y = smin(yl, yTop, .014);
-    // Broad gravity folds start near the side seams and deepen at the loose hem.
-    // Smaller, asymmetric compression ridges pull away from each armpit.
-    const side = Math.pow(Math.abs(s), 2.4);
-    const hemWeight = sstep(0.05, -0.34, yl);
-    const chest = Math.pow(Math.max(0, c), 5);
-    const drape = (Math.sin(th * 4.0 + yl * 4.2) * .67 + Math.sin(th * 7.0 - yl * 5.8 + 1.7) * .33)
-      * (.0009 + .0041 * hemWeight) * (.42 + .58 * side) * (1 - .64 * chest * (1 - hemWeight));
-    const pull = (ax - 0.15) * 0.8 + (yl - (s > 0 ? 0.066 : 0.080));
-    const armpit = (Math.exp(-Math.pow(pull / 0.026, 2)) - 0.64 * Math.exp(-Math.pow((pull + 0.022) / 0.022, 2)))
-      * sstep(0.08, 0.20, ax) * 0.0055;
-    const waist = Math.exp(-Math.pow((yl + 0.20 - 0.12 * s) / 0.073, 2)) * side
-      * Math.sin(yl * 55 + th * 1.7) * 0.0028;
-    const grain = vnoise(th * 6, yl * 15) * 0.00055;
-    const edge = sstep(0.016, 0.003, v) * 0.0014;
-    // Off-axis tension falls out from the armhole and gathers toward a hanging hem.
-    const ripple = side * (1 - sstep(-.10, .055, yl));
-    const tuck = .0048 * ripple * (
-      crease(yl + .216 + .053 * s + (ax - .09) * .32, .018)
-      - .65 * crease(yl + .243 + .055 * s + (ax - .09) * .4, .024)
-    );
-    const underarm = -.0043 * side * crease(yl - .061 + .31 * (ax - .15), .024);
-    const hemRoll = .00145 * crease(v - .025, .015);
-    // Long folds hang under their own weight. The shorter compression folds
-    // pull in diagonally from each side; they taper out toward the print area.
-    const loose = sstep(.23, -.31, yl);
+    const yTop = yNeck - slope * shoulder - .015 * sstep(.145, .205, ax)
+      - .009 * Math.abs(c) * sstep(.089, .17, ax);
+    let y = smin(yl, yTop, .013);
+
     const front = Math.max(0, c), back = Math.max(0, -c);
-    const ridgeA = ax - (.093 + .039 * loose + .013 * s * yl);
-    const ridgeB = ax - (.055 + .018 * Math.sin(6 * yl + s * .9));
-    const fall = loose * loose * (front * (
-      .0115 * crease(ridgeA, .025) - .0064 * crease(ridgeA + .027, .023)
-      + .0072 * crease(ridgeB, .023) - .0046 * crease(ridgeB + .021, .027)
-    ) + back * (.0075 * crease(ridgeA, .028) - .0065 * crease(ridgeA + .031, .021)));
-    const stress = side * (1 - sstep(-.07, .14, yl)) * (
-      .0072 * crease(yl + .19 + s * .048 + ax * .41, .030)
-      - .0052 * crease(yl + .218 + s * .044 + ax * .36, .027)
+    const pectoral = .0057 * crease(ax - .087, .056) * crease(yl - .088, .114) * front ** 2;
+    const shoulderBlade = .0078 * crease(ax - .098, .058) * crease(yl - .092, .110) * back ** 2;
+    const posture = .012 * sstep(-.15, .149, yl) - .008 * sstep(-.075, -.32, yl);
+    z += pectoral - shoulderBlade + posture;
+
+    const side = Math.abs(s) ** 1.45;
+    const ease = 1 - sstep(-.10, .12, yl);
+    const hemWeight = sstep(-.083, -.34, yl);
+    const drape = (.0021 + .0040 * hemWeight)
+      * (Math.sin(angle * 5 + yl * 6.1) * .75 + Math.sin(angle * 9 - yl * 2.7) * .25);
+    const armpitPath = yl - .035 + (ax - .143) * (s < 0 ? .64 : .84);
+    const armpit = side * .0057 * (crease(armpitPath, .020) - .53 * crease(armpitPath + .020, .024));
+    // Diagonal folds travel inwards from the seams as the fabric hangs loose
+    // over the waist, leaving the upper chest clear for personalized artwork.
+    const firstFold = yl + .242 + .020 * s + .043 * c + (ax - .086) * (s < 0 ? .69 : .45);
+    const secondFold = yl + .171 - .018 * s - .027 * c + (ax - .070) * (s < 0 ? .29 : .77);
+    const sideFold = side * ease * (
+      (.010 + .002 * s) * (crease(firstFold, .022) - .57 * crease(firstFold + .024, .026))
+      + (.006 - .002 * s) * (crease(secondFold, .027) - .58 * crease(secondFold + .029, .030))
     );
-    const off = (drape + armpit + waist + grain + tuck + underarm + (fall + stress) * (heavy ? .74 : 1.19)) * wr + edge + hemRoll;
+    const lengthwise = ease * (.0068 * crease(ax - .084 - .037 * hemWeight, .025)
+      - .0039 * crease(ax - .057 - .028 * hemWeight, .029)) * (front + back * .62);
+    const tuckPath = yl + .273 + .16 * x;
+    const tuck = o.tucked ? .013 * (crease(tuckPath, .014) - .76 * crease(tuckPath + .018, .019))
+      + .0084 * side * crease(tuckPath - .043, .019) : 0;
+    const hemRoll = .0015 * crease(v - .028, .015);
+    const off = (drape + armpit + (sideFold + lengthwise) * (heavy ? .72 : 1) + tuck) * wr + hemRoll;
     const length = Math.hypot(x, z) || 1;
-    x += x / length * off + .0095 * hemWeight * wr - .0021 * Math.sin(yl * 11) * side;
-    // The torso changes pitch from the chest to the unsupported lower panels.
-    const balance = .013 * sstep(-.23, .056, yl) - .008 * hemWeight;
-    z += z / length * off + balance + .006 * hemWeight * s;
-    y += (Math.sin(th * 2 + 1.15) * .0054 + Math.sin(th * 5 - .5) * .0016 + .0034 * s) * sstep(.145, 0, v) * wr;
+    x += x / length * off + .006 * hemWeight * wr;
+    z += z / length * off + .0048 * hemWeight * s;
+    y += (Math.sin(angle * 2 + 1.15) * .0047 + Math.sin(angle * 5 - .5) * .0018 + .0033 * s)
+      * sstep(.145, 0, v) * wr;
     return [x, y, z];
   };
   // arc-length U: the cross-section is a superellipse, so equal angle steps are NOT equal fabric widths.
   // Re-map U per quadrant by arc length at chest height so prints and lettering are never stretched.
   const NS = 1024, cum = new Float64Array(NS + 1);
-  { const a0 = prof(widthP, 0.05), bf = prof(bfP, 0.05), bb = prof(bbP, 0.05); let px = 0, pz = 0;
-    for (let i = 0; i <= NS; i++) { const th = (i / NS - 0.25) * TAU, s = Math.sin(th), c = Math.cos(th); const x = a0 * Math.sign(s) * Math.pow(Math.abs(s), 2 / nx), z = (c > 0 ? bf : bb) * Math.sign(c) * Math.pow(Math.abs(c), 2 / 2.2);
-      cum[i] = i ? cum[i - 1] + Math.hypot(x - px, z - pz) : 0; px = x; pz = z; } }
+  let previousX = 0, previousZ = 0;
+  for (let i = 0; i <= NS; i++) {
+    const [x, z] = section(i / NS, .05);
+    if (i > 0) cum[i] = cum[i - 1] + Math.hypot(x - previousX, z - previousZ);
+    previousX = x;
+    previousZ = z;
+  }
   const L = u => { const f = clamp(u, 0, 1) * NS, i = Math.min(NS - 1, Math.floor(f)); return lerp(cum[i], cum[i + 1], f - i); };
   const Q = [0, 0.25, 0.5, 0.75, 1].map(L);
   const arcU = u => { const q = Math.min(3, Math.floor(clamp(u, 0, 0.99999) * 4)); return (q + (L(u) - Q[q]) / (Q[q + 1] - Q[q])) / 4; };
@@ -298,7 +301,7 @@ export function armhole(fn, side, { long = false, tank = false } = {}) {
   const centerU = side < 0 ? 0 : .5;
   const centerV = tank ? .766 : long ? .769 : .780;
   const radiusU = tank ? .119 : long ? .110 : .093;
-  const radiusV = tank ? .178 : long ? .171 : .163;
+  const radiusV = tank ? .166 : long ? .172 : .166;
   const frontTilt = tank ? .15 : .12;
   const widthAt = height => radiusU * (1 + .22 * height);
   const wrap = u => (u + 1) % 1;
@@ -324,10 +327,10 @@ export function sleeve(side, hole, { long = false, sport = false } = {}) {
   for (let i = 0; i < 32; i++) rootCenter.add(new THREE.Vector3(...hole.at(i * TAU / 32)));
   rootCenter.multiplyScalar(1 / 32);
   const cut = long
-    ? [[.030, -.035, -.006], [.055, -.107, -.009], [.065, -.215, .004], [.057, -.319, .016], [.049, -.397, .028]]
+    ? [[.023, -.031, .004], [.039, -.103, .009], [.044, -.205, .021], [.041, -.310, .040], [.036, -.395, .053]]
     : sport
-      ? [[.025, -.026, -.004], [.049, -.061, -.006], [.074, -.105, -.009], [.085, -.128, -.007]]
-      : [[.032, -.014, -.004], [.058, -.042, -.012], [.079, -.071, -.017], [.095, -.105, -.018]];
+      ? [[.023, -.024, .007], [.043, -.059, .009], [.062, -.100, .010], [.074, -.128, .012]]
+      : [[.021, -.024, .007], [.037, -.052, .009], [.053, -.087, .011], [.064, -.119, .014]];
   const points = cut.map(([x, y, z]) => rootCenter.clone().add(new THREE.Vector3(x * side, y, z)));
   const curve = new THREE.CatmullRomCurve3([rootCenter, ...points], false, 'centripetal');
   const frames = Array.from({length: 65}, (_, i) => {
@@ -351,9 +354,9 @@ export function sleeve(side, hole, { long = false, sport = false } = {}) {
     if (fraction === 1) return b;
     return { center: a.center.clone().lerp(b.center, fraction), front: a.front.clone().lerp(b.front, fraction), upper: a.upper.clone().lerp(b.upper, fraction) };
   }
-  const rootWidth = long ? .085 : .072, rootDepth = long ? .066 : .058;
-  const endWidth = long ? .042 : sport ? .052 : .056;
-  const endDepth = long ? .032 : sport ? .036 : .034;
+  const rootWidth = long ? .079 : .069, rootDepth = long ? .071 : .066;
+  const endWidth = long ? .041 : sport ? .052 : .049;
+  const endDepth = long ? .039 : sport ? .046 : .043;
   const shell = (u, v) => {
     const angle = u * TAU;
     const frame = sleeveFrame(v);
@@ -364,17 +367,21 @@ export function sleeve(side, hole, { long = false, sport = false } = {}) {
       + Math.sin(v * 12 - 2.4 * Math.sin(angle)) * .25
       + vnoise(v * 11, angle * 1.6) * .11
     ) * folds * sideWeight;
-    const amplitude = long ? .0038 : .0017;
+    const amplitude = long ? .0046 : .003;
     const bend = Math.cos(angle + side * .45);
     const elbow = long ? .0086 * (.62 + .38 * bend) * (
       crease(v - .55 - .12 * bend + side * .031, .049)
       - .71 * crease(v - .614 - .096 * bend + side * .021, .054)
       + .44 * crease(v - .72 - .10 * bend - side * .013, .041)
-    ) : .0012 * crease(v - .74 + .11 * Math.cos(angle), .107);
+    ) : .0042 * (.3 + .7 * Math.max(0, bend)) * (
+      crease(v - .67 + .15 * bend, .086) - .54 * crease(v - .765 + .13 * bend, .088)
+    );
     const gathers = (long ? .0018 : .0008) * crease(v - .89, .11) * (1 - sstep(.94, 1, v)) * Math.cos(angle * 5 + v * 10);
     const finish = Math.pow(v, long ? 1.15 : .82);
-    const width = lerp(rootWidth, endWidth, finish) + amplitude * pinch + elbow + gathers;
-    const depth = lerp(rootDepth, endDepth, finish) + amplitude * 1.4 * pinch + elbow * .56 + gathers;
+    const muscle = (long ? .0061 : .005) * (crease(v - .32, .19) - crease(.32, .19) * (1 - v))
+      * (1 - sstep(.83, 1, v));
+    const width = lerp(rootWidth, endWidth, finish) + muscle + amplitude * pinch + elbow + gathers;
+    const depth = lerp(rootDepth, endDepth, finish) + muscle * 1.16 + amplitude * 1.4 * pinch + elbow * .56 + gathers;
     const root = hole.at(angle, 1.001);
     const sourceRing = outer(frames[0], angle, rootDepth, rootWidth);
     const currentRing = outer(frame, angle, depth, width);
@@ -487,15 +494,14 @@ export function hood(fn) {
   };
 }
 
-/* The short shares one hip edge with both legs, joined along a curved crotch seam.
-   The outseam and leg opening follow the MakeHuman CC0 athletic shorts fit. */
+/* A fuller, knee-length athletic short with the catalog's flared leg. */
 export function short() {
   const hip = (th, v) => {
     const sx = Math.sin(th), sz = Math.cos(th);
     const gather = Math.sin(th * 28) * .0018 * Math.pow(1 - v, 3);
     const fold = Math.sin(th * 9 + v * 4) * .0026 * Math.sin(Math.PI * v);
-    const depth = sz >= 0 ? lerp(.098, .109, v) : lerp(.113, .103, v);
-    return [(lerp(.165, .184, v) + gather + fold) * sx, -.108 * v + .007 * v * sz, (depth + gather + fold) * sz];
+    const depth = sz >= 0 ? lerp(.105, .121, v) : lerp(.111, .119, v);
+    return [(lerp(.166, .204, v) + gather + fold) * sx, -.127 * v + .007 * v * sz, (depth + gather + fold) * sz];
   };
   const top = surface(140, 34, (u, v) => hip((u - .25) * TAU, v), {
     wrapU: true, uvFn: (u, v) => [u, 1 - .31 * v],
@@ -505,16 +511,24 @@ export function short() {
       const a = u * TAU, sine = Math.sin(a), cosine = Math.cos(a);
       const inner = Math.max(0, -sine);
       const outerJoin = hip(side * a, 1);
-      const join = inner > 0 ? [0, outerJoin[1] - inner * .053, outerJoin[2]] : outerJoin;
+      const join = inner > 0 ? [0, outerJoin[1] - inner * .077, outerJoin[2]] : outerJoin;
       const drape = (Math.sin(a * 5 + side * 1.2 + .8 * v) * .0035 + vnoise(a * 2.3, v * 4) * .002) * v;
       const edge = [
-        side * (.106 + sine * (.090 + drape - inside)),
-        -.304 + .0045 * Math.sin(a * 2 + side) + sine * -.007,
-        cosine * (.071 + drape - inside) + .021 - .008 * side,
+        side * (.126 + sine * (.104 + drape - inside)),
+        -.383 + .0053 * Math.sin(a * 2 + side) + sine * -.008,
+        cosine * (.089 + drape - inside) + .025 - .006 * side,
       ];
       const fall = v * (.64 + .36 * v);
-      const fold = .0043 * crease(Math.abs(sine) - .12 - .22 * v, .16) * Math.sin(Math.PI * v);
-      return [lerp(join[0], edge[0], fall), lerp(join[1], edge[1], v), lerp(join[2], edge[2], fall) + fold * cosine];
+      const pull = v - .33 - .16 * sine - .058 * side;
+      const folds = Math.sin(Math.PI * v) * (
+        .0091 * crease(pull, .071) - .0066 * crease(pull - .081, .079)
+        + .005 * crease(pull - .214, .083)
+      ) * (.42 + .58 * Math.max(0, cosine));
+      return [
+        lerp(join[0], edge[0], fall) + side * sine * folds * .41,
+        lerp(join[1], edge[1], v),
+        lerp(join[2], edge[2], fall) + folds * cosine,
+      ];
     };
     const uv = (u, v) => [.25 + side * u, .69 * (1 - v)];
     const seam = [.932, .958].map(v => trace(68, u => {
@@ -531,7 +545,7 @@ export function short() {
     const th = (u - .25) * TAU;
     const gather = (.6 + .4 * Math.sin(v * Math.PI)) * (.0013 * Math.sin(th * 35) + .0007 * Math.cos(th * 49));
     const roll = .0011 * Math.sin(v * Math.PI) + .00065 * Math.cos(v * TAU * 2);
-    const depth = Math.cos(th) >= 0 ? .098 : .113;
+    const depth = Math.cos(th) >= 0 ? .105 : .111;
     const shoulder = hip(th, .025);
     const top = .0008 + .032 * v;
     const foldedEdge = sstep(.79, 1, v);
@@ -542,7 +556,11 @@ export function short() {
       (depth + roll + gather) * Math.cos(th) * inset,
     ];
   }, {wrapU: true});
-  return { top, left: leg(-1), right: leg(1), band };
+  const cords = [-1, 1].flatMap(side => [
+    [[0,.017,.108],[side * .020,.028,.111],[side * .032,.017,.116],[side * .018,.008,.116],[0,.017,.108]],
+    [[0,.016,.111],[side * .009,-.010,.119],[side * .012,-.046,.127],[side * .015,-.071 - .005 * side,.130]],
+  ]);
+  return { top, left: leg(-1), right: leg(1), band, cords };
 }
 
 export function flagGeo(w = 1.2, h = .8) {
@@ -566,13 +584,12 @@ export function waveFlag(geo, t) {
   const w = geo.userData.width;
   for (let i = 0; i < positions.count; i++) {
     const x = b[i * 3], y = b[i * 3 + 1], k = clamp(x / w, 0, 1);
-    const softness = Math.pow(k, .83);
-    const ripple = .007 * k * Math.sin(k * 26 - t * 2.35 + y * 12);
-    const billow = .066 * Math.sin(k * 7.2 - t * 1.21 + y * 2.3);
-    const trailingEdge = .019 * Math.sin(k * 16 - t * 1.9 + y * 5.9);
-    const z = w * softness * (billow + trailingEdge + ripple);
-    const fall = w * k * k * (.055 + .018 * Math.sin(t * .63 - k * 2));
-    positions.setXYZ(i, x - w * .031 * k * k, y - fall + w * softness * .017 * Math.sin(k * 7.3 - t * 1.21), z);
+    const free = sstep(0, .25, k);
+    const fold = Math.sin(k * 8.1 - t * 1.28 + y * 3.1);
+    const billow = .083 * fold + .019 * Math.sin(k * 17.3 - t * 1.73 + y * 6.7);
+    const sag = .098 * Math.sin(Math.PI * k) * (.85 + .15 * Math.cos(y * 3));
+    const tail = Math.sin(k * 8.2 - t * 1.18 + y * 1.4);
+    positions.setXYZ(i, x - w * .026 * k * k, y - w * sag + w * free * .025 * tail, w * free * billow);
   }
   positions.needsUpdate = true;
   geo.computeVertexNormals();
@@ -583,7 +600,7 @@ export const CAP_SEAMS = Array.from({ length: 6 }, (_, i) => .75 - 1 / 12 + i / 
 export function cap() {
   // The CC0 Grab3D cap provides a dimensional check for the crown and visor.
   // https://grab3d.com/models/props/baseball-cap/
-  const RX = .102, RZ = .112, RY = .117;
+  const RX = .100, RZ = .113, RY = .119;
   const crownAt = (u, v) => {
     const a = u * TAU, b = v * Math.PI / 2;
     const z = Math.sin(a);
@@ -592,7 +609,7 @@ export function cap() {
     const taper = Math.pow(Math.max(0, Math.cos(b)), .83 - .30 * front);
     const panel = Math.pow(.5 + .5 * Math.cos((u - .25) * 6 * TAU), 2.5) * .0027 * Math.sin(Math.PI * v);
     const pinch = Math.sin(a * 11 + 2 * v) * .0012 * Math.exp(-Math.pow((v - .2) / .18, 2));
-    const shape = taper * (1 + .08 * front * Math.sin(v * Math.PI) - .05 * rear * Math.sin(v * Math.PI));
+    const shape = taper * (1 + .14 * front * Math.sin(v * Math.PI) - .05 * rear * Math.sin(v * Math.PI));
     const baseY = -.006 + .016 * Math.pow(Math.cos(a), 2) + .006 * z;
     return [(RX * shape - panel + pinch) * Math.cos(a),
       baseY * (1 - v) + RY * Math.sin(b) * (1 + .23 * front * (1 - v) - .12 * rear * (1 - v)),
@@ -622,8 +639,8 @@ export function cap() {
     const cosine = Math.cos(a);
     return [
       base[0] * (1 - .095 * curve * v * Math.abs(cosine)),
-      base[1] - (.013 + .063 * cosine * cosine) * v * curve - layer,
-      base[2] + .087 * curve * v * (1 - .17 * cosine * cosine),
+      base[1] - (.011 + .075 * cosine * cosine) * v * curve - layer,
+      base[2] + .095 * curve * v * (1 - .23 * cosine * cosine),
     ];
   };
   const visorTop = surface(98, 26, visorFn);
