@@ -26,8 +26,16 @@ async function run(browser, mobile) {
     assert.equal(await page.evaluate(() => scrollY), 0);
     await page.locator('#configurador').scrollIntoViewIfNeeded();
     if (mobile) {
-      await page.locator('#openDz').click();
+      const menuButton = page.getByRole('button', { name: 'Abrir menú' });
+      await menuButton.click();
+      await page.waitForFunction(() => document.activeElement.id === 'menuClose');
+      await page.keyboard.press('Shift+Tab');
+      assert.equal(await page.evaluate(() => document.activeElement.textContent.trim()), 'Pedir presupuesto');
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => document.activeElement.id === 'menuBtn');
+      await page.locator('#productos [data-product=campera]').click();
       assert.equal(await page.getByRole('dialog', { name: 'Estudio de diseño' }).isVisible(), true);
+      assert.equal(await page.locator('#crumbT').textContent(), 'Campera con capucha');
     }
     await waitForStudio(page);
     assert.equal(await activeStep(page), 'Modelo');
@@ -139,12 +147,25 @@ async function run(browser, mobile) {
     assert.ok(archive.includes(Buffer.from('impronta-remera-juani-3-4.png')));
     await page.keyboard.press('Escape');
     assert.equal(await page.locator('#lb').evaluate(element => element.classList.contains('open')), false);
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'renderBtn');
 
     if (mobile) {
-      await page.locator('#closeDz').click();
-      await page.waitForFunction(() => !document.body.classList.contains('dz'));
+      await page.locator('#sizeGuide').click();
+      await page.waitForFunction(() => document.querySelector('#tdet').open && !history.state?.dz);
+      assert.equal(await page.locator('#closeDz').isHidden(), true);
+      assert.equal(await page.evaluate(() => document.activeElement.closest('#tdet')?.id), 'tdet');
+      await page.waitForFunction(() => Math.abs(document.querySelector('#talles').getBoundingClientRect().top) < 150);
     }
+    const photo = page.locator('#grid [data-lb]').first();
+    await photo.click();
+    await page.getByRole('link', { name: 'Descargar foto' }).waitFor({ state: 'visible' });
+    assert.equal(await page.locator('#lbDl').getAttribute('download'), 'egresados-galaxia.webp');
+    await page.keyboard.press('Escape');
+    assert.equal(await photo.evaluate(element => document.activeElement === element), true);
     await page.locator('#filters [data-f="3d"]').click();
+    const total = await page.locator('#grid .card').count();
+    const visible = await page.locator('#grid .card:not(.hide)').count();
+    assert.equal(await page.locator('#gcount').textContent(), `Mostrando ${visible} de ${total}`);
     await page.locator('#grid [data-preset=seleccion]').click();
     assert.equal(await studioState(page, 'producto'), 'conjunto');
     assert.equal(await studioState(page, 'preset'), 'rayas');

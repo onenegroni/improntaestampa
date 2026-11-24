@@ -13,6 +13,7 @@
 <meta property="og:image" content="https://improntaestampa.pages.dev/img/og.jpg">
 <meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
 <meta property="og:url" content="https://improntaestampa.pages.dev/">
+<link rel="canonical" href="https://improntaestampa.pages.dev/">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="img/mark.svg" type="image/svg+xml">
@@ -133,7 +134,7 @@
  <div class="wrap shead center"><p class="kicker rv">Trabajos realizados</p><h2 id="galT" class="split"><span class="ln"><span>Promos que quisieron</span></span><span class="ln"><span>destacarse.</span></span></h2>
  <p class="sub rv d1">Fotos reales de nuestro taller y diseños del configurador. Tocá un diseño 3D para personalizarlo.</p></div>
  <div class="wrap">
- <div class="filters rv" id="filters" role="group" aria-label="Filtrar trabajos"><button aria-pressed="true" data-f="all">Todos</button><button aria-pressed="false" data-f="egresados">Egresados</button><button aria-pressed="false" data-f="inicial">Nivel inicial</button><button aria-pressed="false" data-f="deportivos">Deportivos</button><button aria-pressed="false" data-f="banderas">Banderas</button><button aria-pressed="false" data-f="3d">Diseños 3D</button><span class="cnt sr" id="gcount"></span></div>
+ <div class="filters rv" id="filters" role="group" aria-label="Filtrar trabajos"><button aria-pressed="true" data-f="all">Todos</button><button aria-pressed="false" data-f="egresados">Egresados</button><button aria-pressed="false" data-f="inicial">Nivel inicial</button><button aria-pressed="false" data-f="deportivos">Deportivos</button><button aria-pressed="false" data-f="banderas">Banderas</button><button aria-pressed="false" data-f="3d">Diseños 3D</button><span class="cnt sr" id="gcount" role="status"></span></div>
  <div class="grid" id="grid">
   <figure class="card big rv" data-cat="egresados"><button class="ph2" data-lb="img/egresados-galaxia.webp" aria-label="Ampliar foto"><img src="img/egresados-galaxia.webp" width="1170" height="704" loading="lazy" alt="Campera y remera de egresados con estampado galáctico y nombre MELI"></button><figcaption class="cap"><b>Conjunto galáctico — campera + remera</b><span>Egresados</span></figcaption></figure>
   <figure class="card rv d1" data-cat="egresados"><button class="ph2" data-lb="img/egresados-splash.webp" aria-label="Ampliar foto"><img src="img/egresados-splash.webp" width="1170" height="743" loading="lazy" alt="Remera y campera splash negro y aqua, MAICOL 2025, nos vamos a la secu"></button><figcaption class="cap"><b>"Nos vamos a la secu" — Promo 2025</b><span>Egresados</span></figcaption></figure>
@@ -158,7 +159,7 @@
 
 <section class="process" aria-labelledby="procT">
  <div class="wrap shead center"><p class="kicker rv">Cómo trabajamos</p><h2 id="procT" class="split"><span class="ln"><span>De la idea a tus manos.</span></span></h2></div>
- <div class="wrap steps">
+ <div class="wrap steps" role="group" aria-labelledby="procT" tabindex="0">
   <div class="rv"><b>01</b><h6>Diseñamos juntos</h6><p>Nos contás la idea del curso o el equipo, o la armás vos en el diseñador 3D.</p></div>
   <div class="rv d1"><b>02</b><h6>Aprobás la propuesta</h6><p>Te mandamos la propuesta de frente y espalda por WhatsApp antes de producir.</p></div>
   <div class="rv d2"><b>03</b><h6>Sublimamos</h6><p>Estampamos full color y confeccionamos cada prenda en nuestro taller de San Juan.</p></div>
@@ -206,7 +207,7 @@
 
 <a class="fab-wa" id="fabWa" href="https://wa.me/5492644127431" target="_blank" rel="noopener" aria-label="Escribinos por WhatsApp"><svg><use href="#wa"/></svg></a>
 <div class="lb" id="lb" role="dialog" aria-modal="true" aria-label="Vista ampliada">
- <div class="bar"><span class="mono lbl" id="lbT">Render</span><div class="acts"><a id="lbDl" href="#" download>Descargar PNG</a><button id="lbZip">ZIP</button><button id="lbX" aria-label="Cerrar">✕</button></div></div>
+ <div class="bar"><span class="mono lbl" id="lbT">Render</span><div class="acts"><a id="lbDl" href="#" download>Descargar PNG</a><button id="lbZip" aria-label="Descargar todas las imágenes en ZIP">ZIP</button><button id="lbX" aria-label="Cerrar">✕</button></div></div>
  <div class="stage"><img id="lbImg" alt=""><button class="nav2 prev" id="lbP" aria-label="Anterior">←</button><button class="nav2 next" id="lbN" aria-label="Siguiente">→</button></div>
  <div class="strip" id="lbS"></div>
 </div>
