@@ -21,18 +21,65 @@ function vnoise(x, y) {
   return lerp(lerp(a, b, u), lerp(c, d, u), v) * 2 - 1;
 }
 
-/** Build a parametric surface. fn(u,v) -> [x,y,z]. skip(u,v) -> true to drop a quad. wrapU averages seam normals. */
-export function surface(nu, nv, fn, { skip = null, wrapU = false, uvFn = null } = {}) {
+/** Build a parametric surface, optionally clipping the patch along a signed UV boundary. */
+export function surface(nu, nv, fn, { clip = null, wrapU = false, uvFn = null } = {}) {
   const pos = [], uv = [], idx = [];
-  for (let j = 0; j <= nv; j++) for (let i = 0; i <= nu; i++) {
-    const u = i / nu, v = j / nv; const p = fn(u, v); pos.push(p[0], p[1], p[2]);
-    if (uvFn) { const q = uvFn(u, v); uv.push(q[0], q[1]); } else uv.push(u, v);
+  const addVertex = (u, v) => {
+    const id = pos.length / 3;
+    pos.push(...fn(u, v));
+    uv.push(...(uvFn ? uvFn(u, v) : [u, v]));
+    return id;
+  };
+  const rowWidth = nu + 1;
+  const n = rowWidth * (nv + 1);
+  const signed = clip && new Float32Array(n);
+  for (let j = 0; j <= nv; j++) {
+    for (let i = 0; i <= nu; i++) {
+      const u = i / nu, v = j / nv;
+      const id = addVertex(u, v);
+      if (signed) signed[id] = clip(u, v);
+    }
   }
-  const W = nu + 1;
-  for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) {
-    if (skip && skip((i + 0.5) / nu, (j + 0.5) / nv)) continue;
-    const a = j * W + i, b = a + 1, c = a + W, d = c + 1;
-    idx.push(a, b, d, a, d, c);
+
+  const intersections = new Map();
+  function cutEdge(a, b) {
+    const id = Math.min(a, b) * n + Math.max(a, b);
+    const known = intersections.get(id);
+    if (known !== undefined) return known;
+    const u0 = a % rowWidth / nu, v0 = Math.floor(a / rowWidth) / nv;
+    const u1 = b % rowWidth / nu, v1 = Math.floor(b / rowWidth) / nv;
+    let lo = 0, hi = 1;
+    const side = signed[a] >= 0;
+    for (let i = 0; i < 9; i++) {
+      const mid = (lo + hi) * .5;
+      if ((clip(lerp(u0, u1, mid), lerp(v0, v1, mid)) >= 0) === side) lo = mid;
+      else hi = mid;
+    }
+    const vertex = addVertex(lerp(u0, u1, (lo + hi) * .5), lerp(v0, v1, (lo + hi) * .5));
+    intersections.set(id, vertex);
+    return vertex;
+  }
+  function triangle(a, b, c) {
+    const polygon = [];
+    const face = [a, b, c];
+    let last = c;
+    for (const point of face) {
+      const inside = signed[point] >= 0;
+      if (inside !== (signed[last] >= 0)) polygon.push(cutEdge(last, point));
+      if (inside) polygon.push(point);
+      last = point;
+    }
+    for (let k = 2; k < polygon.length; k++) idx.push(polygon[0], polygon[k - 1], polygon[k]);
+  }
+  for (let row = 0; row < nv; row++) {
+    for (let col = 0; col < nu; col++) {
+      const a = row * rowWidth + col, b = a + 1, c = a + rowWidth, d = c + 1;
+      if (!signed || (signed[a] >= 0 && signed[b] >= 0 && signed[c] >= 0 && signed[d] >= 0)) idx.push(a, b, d, a, d, c);
+      else if (signed[a] >= 0 || signed[b] >= 0 || signed[c] >= 0 || signed[d] >= 0) {
+        triangle(a, b, d);
+        triangle(a, d, c);
+      }
+    }
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -41,24 +88,12 @@ export function surface(nu, nv, fn, { skip = null, wrapU = false, uvFn = null } 
   if (wrapU) {
     const n = g.attributes.normal;
     for (let j = 0; j <= nv; j++) {
-      const a = j * W, b = j * W + nu;
+      const a = j * rowWidth, b = j * rowWidth + nu;
       const x = n.getX(a) + n.getX(b), y = n.getY(a) + n.getY(b), z = n.getZ(a) + n.getZ(b); const l = Math.hypot(x, y, z) || 1;
       n.setXYZ(a, x / l, y / l, z / l); n.setXYZ(b, x / l, y / l, z / l);
     }
   }
   return g;
-}
-
-function tube(points, radiusFn, nu = 48, { ellip = 1, up = new THREE.Vector3(0, 0, 1) } = {}) {
-  // points: array of Vector3 along path; radiusFn(t)
-  const curve = new THREE.CatmullRomCurve3(points);
-  const nv = points.length * 8;
-  return surface(nu, nv, (u, v) => {
-    const p = curve.getPointAt(v); const T = curve.getTangentAt(v);
-    let N = up.clone().sub(T.clone().multiplyScalar(up.dot(T))).normalize(); const B = new THREE.Vector3().crossVectors(T, N);
-    const a = u * TAU, r = radiusFn(v);
-    return [p.x + (N.x * Math.cos(a) * ellip + B.x * Math.sin(a)) * r, p.y + (N.y * Math.cos(a) * ellip + B.y * Math.sin(a)) * r, p.z + (N.z * Math.cos(a) * ellip + B.z * Math.sin(a)) * r];
-  }, { wrapU: true });
 }
 
 /* ---------------- TORSO ----------------
@@ -124,17 +159,13 @@ export function torsoFn(o) {
   fn.arcU = arcU;
   return fn;
 }
-export function torso(o = {}) {
-  const fn = torsoFn(o);
-  return { geo: surface(o.nu || 200, o.nv || 130, fn, { wrapU: true, skip: o.skip ? (u, v) => o.skip(u, v, fn) : null, uvFn: fn.uv }), fn };
-}
 // knitted rib collar: a short band standing on the neckline, rolled slightly outward, with thickness
 export function collar(fn, { h = 0.016 } = {}) {
   return surface(160, 10, (u, v) => {
     const p = fn(u, 1); const l = Math.hypot(p[0], p[2]) || 1;
-    const a = v * Math.PI; // fold: outer face up, then inner face back down
-    const out = Math.sin(a) * 0.0035 + 0.001, up = (1 - Math.cos(a)) * 0.5 * h;
-    const inward = v > 0.5 ? (v - 0.5) * 0.006 : 0;
+    const out = Math.sin(v * Math.PI) * .0025 + .001;
+    const up = h * Math.sin(v * Math.PI * .83);
+    const inward = v > .46 ? (v - .46) * .012 : 0;
     return [p[0] + p[0] / l * (out - inward), p[1] + up - 0.002, p[2] + p[2] / l * (out - inward)];
   }, { wrapU: true });
 }
@@ -149,174 +180,316 @@ export function facing(fn, neck) {
   }, { wrapU: true });
 }
 
-/* ---------------- SLEEVES ----------------
-   Empty sleeves: flattened front-to-back, falling from the shoulder under their own weight. */
-function tubeE(points, radiusFn, ellipFn, nu = 96) {
-  const curve = new THREE.CatmullRomCurve3(points, false, 'centripetal');
-  const nv = points.length * 10, up = new THREE.Vector3(0, 0, 1);
-  return surface(nu, nv, (u, v) => {
-    const p = curve.getPointAt(v), T = curve.getTangentAt(v);
-    const N = up.clone().sub(T.clone().multiplyScalar(up.dot(T))).normalize(), B = new THREE.Vector3().crossVectors(T, N);
-    const a = u * TAU, r = radiusFn(v, a), e = ellipFn(v);
-    const cn = Math.cos(a) * e * r, sn = Math.sin(a) * r;
-    return [p.x + N.x * cn + B.x * sn, p.y + N.y * cn + B.y * sn, p.z + N.z * cn + B.z * sn];
-  }, { wrapU: true });
+// A set-in sleeve starts on the same UV boundary that is cut out of the body.
+// Its volume then eases into a flattened tube, with gravity folds at the elbow.
+export function armhole(fn, side, { long = false, tank = false } = {}) {
+  const centerU = side < 0 ? 0 : 0.5;
+  const centerV = long ? 0.797 : 0.787;
+  const radiusU = tank ? .128 : long ? .122 : .105;
+  const radiusV = tank ? .202 : long ? .183 : .164;
+  const wrap = u => (u + 1) % 1;
+  const param = (a, scale = 1) => [
+    wrap(centerU - side * radiusU * Math.cos(a) * scale),
+    centerV + radiusV * (Math.sin(a) - .08 * Math.cos(a)) * scale,
+  ];
+  const clip = (u, v) => {
+    const du = ((u - centerU + 1.5) % 1 - .5) / radiusU;
+    const dv = (v - centerV) / radiusV - side * .08 * du;
+    return du * du + dv * dv - 1;
+  };
+  const at = (a, scale) => fn(...param(a, scale));
+  const uv = Array.from({length: 97}, (_, i) => fn.uv(...param(i / 96 * TAU, 1.075)));
+  return { clip, at, uv };
 }
-export function sleeve(side, { long = false } = {}) {
-  const sx = side;
+export function sleeve(side, hole, { long = false } = {}) {
   const pts = long
-    ? [new THREE.Vector3(0.15 * sx, 0.112, -0.004), new THREE.Vector3(0.212 * sx, 0.092, 0), new THREE.Vector3(0.243 * sx, -0.02, 0.006), new THREE.Vector3(0.256 * sx, -0.15, 0.024), new THREE.Vector3(0.258 * sx, -0.255, 0.05), new THREE.Vector3(0.262 * sx, -0.34, 0.062)]
-    : [new THREE.Vector3(0.14 * sx, 0.122, -0.004), new THREE.Vector3(0.205 * sx, 0.106, 0), new THREE.Vector3(0.258 * sx, 0.035, 0.004), new THREE.Vector3(0.283 * sx, -0.028, 0.006)];
-  const r0 = long ? 0.08 : 0.084, r1 = long ? 0.05 : 0.066;
-  const rad = (t, a) => {
-    const base = lerp(r0, r1, Math.pow(t, long ? 0.75 : 0.9));
-    const belly = Math.pow(Math.max(0, -Math.sin(a)), 2);
-    const elbow = Math.exp(-Math.pow((t - 0.57) / 0.21, 2));
-    const gathers = Math.sin(t * 44 + 2 * Math.cos(a)) * (long ? 0.060 * elbow + 0.050 * sstep(.67, .93, t) : 0.038 * belly);
-    const falloff = sstep(0.02, 0.16, t) * (1 - sstep(0.83, 1, t));
-    return base * (1 - 0.07 * belly * (1 - t) + falloff * (gathers + vnoise(t * 7 + sx, a * 1.22) * 0.030));
-  };
-  const geo = tubeE(pts, rad, t => long ? lerp(0.74, 0.58, t) : lerp(0.86, 0.60, t));
-  const end = pts[pts.length - 1], prev = pts[pts.length - 2];
-  return { geo, end, dir: end.clone().sub(prev).normalize(), r1, ellip: long ? 0.58 : 0.6 };
-}
-export function cuff(end, dir, r, len, rScale = 0.97, ellip = 0.6) {
-  const a = end.clone().addScaledVector(dir, -0.006), b = end.clone().addScaledVector(dir, len);
-  return tubeE([a, a.clone().lerp(b, 0.5), b], t => r * lerp(1.01, rScale, t), () => ellip, 56);
-}
-
-
-/* ---------------- TANK TOP ARMHOLES ---------------- */
-// Armhole = region of the torso surface outside an ellipse in the (|x|, y) plane: clean straps over the shoulder.
-export const ARM = { cx: 0.238, cy: 0.222, rx: 0.106, ry: 0.192 };
-export const inArmhole = p => { const dx = (Math.abs(p[0]) - ARM.cx) / ARM.rx, dy = (p[1] - ARM.cy) / ARM.ry; return dx * dx + dy * dy < 1; };
-// closed binding loop: for each angle around the body find where the upward walk enters / leaves the armhole
-export function armholeLoop(fn, side) {
-  const ent = [], ex = [], N = 260, V = 160;
-  for (let i = 0; i <= N; i++) {
-    const th = side * Math.PI / 2 + (i / N - 0.5) * Math.PI * 0.98; const u = ((th / TAU + 0.25) % 1 + 1) % 1;
-    let prev = inArmhole(fn(u, 0)), vin = null, vout = null;
-    for (let j = 1; j <= V; j++) {
-      const v = j / V, cur = inArmhole(fn(u, v));
-      if (cur !== prev) {
-        let lo = (j - 1) / V, hi = v; for (let k = 0; k < 18; k++) { const m = (lo + hi) / 2; if (inArmhole(fn(u, m)) === prev) lo = m; else hi = m; }
-        if (cur && vin === null) vin = hi; else if (!cur && vin !== null && vout === null) vout = hi;
-      }
-      prev = cur;
-    }
-    if (vin !== null) ent.push(fn(u, vin));
-    if (vin !== null && vout !== null) ex.push(fn(u, vout));
-  }
-  const pts = ent.concat(ex.reverse()).map(p => new THREE.Vector3(p[0], p[1], p[2]));
-  // light smoothing, keep closed
-  const out = pts.map((p, i) => p.clone().add(pts[(i + 1) % pts.length]).add(pts[(i - 1 + pts.length) % pts.length]).multiplyScalar(1 / 3));
-  return out.filter((p, i) => i % 2 === 0);
-}
-
-/* ---------------- HOOD (lying down on the back) ---------------- */
-export function hood(fn) {
-  const prof2 = [[0, 0], [0.004, 0.045], [0.03, 0.082], [0.07, 0.072], [0.094, 0.025], [0.1, -0.04], [0.098, -0.085]];
-  const curve = new THREE.CatmullRomCurve3(prof2.map(p => new THREE.Vector3(p[0], p[1], 0)));
-  const A = 0.8 * Math.PI;
-  const f = (u, v, off = 0) => {
-    const th = Math.PI + (u * 2 - 1) * A; // around the back
-    const uu = (th / TAU + 0.25) % 1;
-    const p = fn(uu, 1);
-    const back = Math.pow(Math.max(0, -Math.cos(th)), 0.7), side = 0.35 + 0.65 * back;
-    const c = curve.getPoint(Math.min(1, v * (0.55 + 0.45 * back)));
-    const rx = p[0], rz = p[2], l = Math.hypot(rx, rz) || 1;
-    const out = c.x * side * 0.95 + off, up = c.y * (0.5 + 0.25 * side);
-    const w = 1 + vnoise(u * 10, v * 4) * 0.03;
-    // ends taper toward the front neckline
-    const end = smooth(Math.min(1, (1 - Math.abs(u * 2 - 1)) * 4));
-    return [rx * 1.02 + rx / l * out * end * w, p[1] + up * end * w - 0.004, rz * 1.02 + rz / l * out * end * w];
-  };
-  const outer = surface(120, 36, (u, v) => f(u, v, 0));
-  const inner = surface(120, 36, (u, v) => f(u, v, -0.004));
-  return { outer, inner };
-}
-
-/* ---------------- SHORT ---------------- */
-export function short(y0 = 0) {
-  const top = surface(160, 24, (u, v) => {
-    const th = (u - 0.25) * TAU, y = y0 - 0.11 * v;
-    const a = lerp(0.178, 0.196, Math.sqrt(v)), b = lerp(0.116, 0.126, Math.sqrt(v));
-    const s = Math.sin(th), c = Math.cos(th);
-    const f = vnoise(th * 4, v * 5) * 0.0015 + Math.sin(th * 9) * 0.0012 * (1 - v);
-    return [(a + f) * Math.sign(s) * Math.pow(Math.abs(s), 0.8), y, (b + f) * Math.sign(c) * Math.pow(Math.abs(c), 0.8)];
-  }, { wrapU: true });
-  const leg = sx => surface(110, 44, (u, v) => {
-    const th = (u - 0.25) * TAU, y = y0 - 0.085 - 0.215 * v;
-    const cx = sx * lerp(0.094, 0.108, v), r = lerp(0.1, 0.104, v), zr = lerp(1.2, 1.05, v);
-    const f = 1 + (Math.sin(th * 4 + sx * 1.7) * 0.025 + vnoise(th * 3 + sx * 5, v * 4) * 0.03) * sstep(0.25, 1, v);
-    return [cx + Math.sin(th) * r * f, y, Math.cos(th) * r * zr * f];
-  }, { wrapU: true });
-  const band = surface(160, 6, (u, v) => {
-    const th = (u - 0.25) * TAU, y = y0 + 0.03 * v; const a = 0.18, b = 0.118; const s = Math.sin(th), c = Math.cos(th);
-    const k = 1.006 + Math.sin(v * Math.PI) * 0.004;
-    return [a * k * Math.sign(s) * Math.pow(Math.abs(s), 0.8), y, b * k * Math.sign(c) * Math.pow(Math.abs(c), 0.8)];
-  }, { wrapU: true });
-  return { top, legL: leg(-1), legR: leg(1), band };
-}
-
-/* ---------------- FLAG ---------------- */
-export function flagGeo(w = 1.2, h = 0.8) { const g = new THREE.PlaneGeometry(w, h, 60, 40); g.translate(w / 2, 0, 0); return g; }
-export function waveFlag(geo, t, w = 1.2) {
-  const p = geo.attributes.position; if (!geo.userData.base) geo.userData.base = p.array.slice();
-  const b = geo.userData.base;
-  for (let i = 0; i < p.count; i++) {
-    const x = b[i * 3], y = b[i * 3 + 1]; const k = x / w;
-    const z = Math.sin(x * 5.2 - t * 2.6 + y * 1.3) * 0.055 * k + Math.sin(x * 9 - t * 3.7) * 0.012 * k;
-    p.setXYZ(i, x - k * k * 0.03, y - k * 0.04 * Math.abs(Math.sin(t * 0.7)) * 0.4 + Math.sin(x * 4 - t * 2) * 0.01 * k, z);
-  }
-  p.needsUpdate = true; geo.computeVertexNormals();
-}
-
-/* ---------------- CAP ---------------- */
-export function cap() {
-  // 6-panel crown: base ellipse (rx, rz), rounded dome profile; front (+z) slightly taller
-  const RX = 0.107, RZ = 0.12, RY = 0.112;
-  const crown = surface(128, 40, (u, v) => {
-    const g = u * TAU, b = v * Math.PI / 2;
-    const c = Math.pow(Math.cos(b), 0.82), s = Math.sin(b);
-    const fr = 1 + Math.max(0, Math.sin(g)) * 0.07 * Math.sin(v * Math.PI);
-    return [RX * c * Math.cos(g) * fr, RY * s * (1 + Math.max(0, Math.sin(g)) * 0.04), RZ * c * Math.sin(g) * fr];
-  }, { wrapU: true, uvFn: (u, v) => [1 - u, v] });
-  // visor: attached to the front ~150deg of the crown base, protrudes forward, curved down at the sides
-  const visor = surface(72, 14, (u, v) => {
-    const g = lerp(0.32, Math.PI - 0.32, u);
-    const sg = Math.sin(g), L = 0.088 * Math.pow(sg, 0.9);
-    const bx = RX * 1.03 * Math.cos(g), bz = RZ * 1.03 * sg;
-    const x = bx * (1 - v * 0.12), z = bz + v * L;
-    const y = 0.004 - v * 0.016 - Math.pow(Math.cos(g), 2) * 0.022 * (0.25 + v);
-    return [x, y, z];
+    ? [[.151, .126, -.004], [.192, .098, -.005], [.221, -.012, .005], [.236, -.126, .021], [.239, -.236, .028], [.241, -.325, .039]]
+    : [[.153, .122, -.002], [.191, .102, 0], [.227, .054, .010], [.261, -.005, .015]];
+  const curve = new THREE.CatmullRomCurve3(pts.map(([x, y, z]) => new THREE.Vector3(x * side, y, z)), false, 'centripetal');
+  const frames = Array.from({length: 65}, (_, i) => {
+    const v = i / 64;
+    const center = curve.getPointAt(v);
+    const tangent = curve.getTangentAt(v);
+    const front = new THREE.Vector3(0, 0, 1).addScaledVector(tangent, -tangent.z).normalize();
+    const upper = new THREE.Vector3().crossVectors(front, tangent).multiplyScalar(side);
+    return { center, tangent, front, upper };
   });
-  const btn = new THREE.SphereGeometry(0.0095, 16, 8, 0, TAU, 0, Math.PI / 2); btn.scale(1, 0.7, 1); btn.translate(0, RY * 1.035, 0);
-  const band = surface(128, 2, (u, v) => { const g = u * TAU; return [RX * 1.012 * Math.cos(g), v * 0.012, RZ * 1.012 * Math.sin(g)]; }, { wrapU: true });
-  return { crown, visor, btn, band };
+  const outer = ({center, front, upper}, angle, rz, ry) => [
+    center.x + front.x * Math.cos(angle) * rz + upper.x * Math.sin(angle) * ry,
+    center.y + front.y * Math.cos(angle) * rz + upper.y * Math.sin(angle) * ry,
+    center.z + front.z * Math.cos(angle) * rz + upper.z * Math.sin(angle) * ry,
+  ];
+  const endWidth = long ? .045 : .060;
+  const endDepth = long ? .035 : .043;
+  const shell = (u, v) => {
+    const angle = u * TAU;
+    const row = frames[Math.round(v * 64)];
+    const folds = sstep(.27, .44, v) * (1 - sstep(.89, 1, v));
+    const sideWeight = .25 + .75 * Math.pow(Math.abs(Math.cos(angle)), 1.8);
+    const pinch = (
+      Math.sin(v * (long ? 24 : 19) + 2.8 * Math.cos(angle) + side * .7) * .62
+      + Math.sin(v * 17 - 2.4 * Math.sin(angle)) * .38
+      + vnoise(v * 11, angle * 1.6) * .19
+    ) * folds * sideWeight;
+    const amplitude = long ? .0052 : .0024;
+    const width = lerp(long ? .092 : .087, endWidth, v) + amplitude * pinch;
+    const depth = lerp(long ? .070 : .073, endDepth, v) + amplitude * 1.6 * pinch;
+    const root = hole.at(angle, 1.005);
+    const end = outer(row, angle, depth, width);
+    const fade = sstep(0, long ? .34 : .62, v);
+    return root.map((value, i) => lerp(value, end[i], fade));
+  };
+  const finish = frames[64];
+  const trimWidth = long ? .048 : .011;
+  const edge = (u, v) => {
+    const angle = u * TAU;
+    const x = v <= .72 ? v / .72 : 1 - (v - .72) * 2;
+    const roll = .0016 * Math.sin(v * Math.PI);
+    const radius = 1 - (long ? .12 : .015) * x - (v > .72 ? .16 * (v - .72) : 0);
+    const center = finish.center.clone().addScaledVector(finish.tangent, trimWidth * x - .0015);
+    return outer({ ...finish, center }, angle, endDepth * radius + roll, endWidth * radius + roll);
+  };
+  const orientation = u => side < 0 ? 1 - u : u;
+  return {
+    shell: surface(96, 64, shell, { wrapU: true, uvFn: (u, v) => [orientation(u), 1 - v] }),
+    trim: surface(96, 14, edge, { wrapU: true, uvFn: (u, v) => [orientation(u), v] }),
+  };
 }
 
-/* zipper path along torso front center */
-export function zipper(fn) {
-  const pts = []; for (let i = 0; i <= 40; i++) { const v = i / 40 * 0.995; const p = fn(0.25, v); pts.push(new THREE.Vector3(p[0], p[1], p[2] + 0.0035)); }
-  return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 120, 0.0042, 8, false);
+export function boundArmhole(hole) {
+  return surface(136, 12, (u, v) => {
+    const p = hole.at(u * TAU, 1.078 - .12 * v);
+    const roll = .0028 * Math.sin(Math.PI * v);
+    const length = Math.hypot(p[0], p[2]) || 1;
+    return [p[0] + p[0] / length * roll, p[1], p[2] + p[2] / length * roll];
+  }, { wrapU: true });
 }
-/* zipper tape (two flat strips) + interlocking teeth as one merged geometry */
-export function zipperParts(fn) {
-  const tape = surface(4, 80, (u, v) => { const p = fn(0.25, v * 0.995); const x = (u - 0.5) * 0.02; return [p[0] + x, p[1], p[2] + 0.0062 - Math.abs(u - 0.5) * 0.003]; });
-  const N = 150, pos = [], idx = [];
-  const box = new THREE.BoxGeometry(0.0052, 0.0019, 0.0026);
-  const bp = box.attributes.position.array, bi = box.index.array, bn = box.attributes.normal.array, nrm = [];
-  for (let i = 0; i < N; i++) {
-    const v = 0.01 + i / N * 0.975, p = fn(0.25, v), s = i % 2 ? 1 : -1, base = pos.length / 3;
-    for (let k = 0; k < bp.length; k += 3) { pos.push(bp[k] + s * 0.0016 + p[0], bp[k + 1] + p[1], bp[k + 2] + p[2] + 0.0078); nrm.push(bn[k], bn[k + 1], bn[k + 2]); }
-    for (let k = 0; k < bi.length; k++) idx.push(bi[k] + base);
+
+/* Two hood panels form a structured opening and a rounded crown, with a sewn lining. */
+export function hood(fn) {
+  const shell = (u, v) => {
+    const th = Math.PI + (u * 2 - 1) * .84 * Math.PI;
+    const neck = fn((th / TAU + .25) % 1, 1);
+    const spread = -Math.cos(Math.PI * u);
+    const arc = Math.pow(Math.sin(Math.PI * u), .86);
+    const rise = Math.pow(v, .78);
+    const crownRise = 1 - Math.pow(1 - v, 2.6);
+    const behind = Math.sin(v * Math.PI) * Math.pow(arc, .69);
+    const edgeX = -spread * (.065 + .078 * arc);
+    const edgeY = .193 + .166 * arc + .012 * spread + .005 * Math.sin(u * Math.PI * 2.6);
+    const edgeZ = .098 - .061 * arc + .016 * spread * arc;
+    const wrinkle = Math.sin(u * Math.PI * 9 + v * 14) * .007 * behind * (1 - v);
+    const fold = (Math.sin(u * Math.PI * 3 + v * 4) * .005 - .006) * arc * (1 - sstep(.05, .46, v));
+    return [
+      lerp(neck[0] * 1.015, edgeX, rise) - spread * .059 * behind,
+      lerp(neck[1] - .002, edgeY, crownRise) + .007 * behind + wrinkle + fold,
+      lerp(neck[2], edgeZ, v) - .126 * behind + wrinkle,
+    ];
+  };
+  const lining = (u, v) => {
+    const point = shell(u, v);
+    const x0 = shell(Math.max(0, u - .001), v);
+    const x1 = shell(Math.min(1, u + .001), v);
+    const y0 = shell(u, Math.max(0, v - .001));
+    const y1 = shell(u, Math.min(1, v + .001));
+    const ua = new THREE.Vector3(x1[0] - x0[0], x1[1] - x0[1], x1[2] - x0[2]);
+    const va = new THREE.Vector3(y1[0] - y0[0], y1[1] - y0[1], y1[2] - y0[2]);
+    const inward = ua.cross(va).normalize().multiplyScalar(-(.0015 + .0020 * sstep(.12, .76, v)));
+    return [point[0] + inward.x, point[1] + inward.y, point[2] + inward.z];
+  };
+  const join = (u, v, depth) => {
+    const outside = shell(u, v);
+    const inside = lining(u, v);
+    return outside.map((value, i) => lerp(value, inside[i], depth));
+  };
+  return {
+    outer: surface(112, 55, shell),
+    inner: surface(112, 55, lining),
+    edges: [
+      surface(112, 5, (u, depth) => join(u, 1, depth)),
+      surface(60, 4, (v, depth) => join(0, v, depth)),
+      surface(60, 4, (v, depth) => join(1, v, depth)),
+    ],
+    eyelet: side => shell(side < 0 ? .92 : .08, .86),
+  };
+}
+
+/* The short shares one hip edge with both legs, joined along a curved crotch seam. */
+export function short() {
+  const hip = (th, v) => {
+    const sx = Math.sin(th), sz = Math.cos(th);
+    const gather = Math.sin(th * 28) * .0018 * Math.pow(1 - v, 3);
+    const fold = Math.sin(th * 9 + v * 4) * .0026 * Math.sin(Math.PI * v);
+    return [(lerp(.172, .186, v) + gather + fold) * sx, -.104 * v, (lerp(.107, .119, v) + gather + fold) * sz];
+  };
+  const top = surface(140, 34, (u, v) => hip((u - .25) * TAU, v), {
+    wrapU: true, uvFn: (u, v) => [u, 1 - .31 * v],
+  });
+  const leg = side => {
+    const run = (u, v, inside = 0) => {
+      const a = u * TAU, sine = Math.sin(a), cosine = Math.cos(a);
+      const inner = Math.max(0, -sine);
+      const join = inner > 0 ? [0, -.104 - inner * .051, .119 * cosine] : hip(side * a, 1);
+      const drape = (Math.sin(a * 5 + side * 1.2 + .8 * v) * .0035 + vnoise(a * 2.3, v * 4) * .002) * v;
+      const edge = [
+        side * (.095 + sine * (.090 + drape - inside)),
+        -.306 + .004 * Math.sin(a * 3 + side) + sine * -.004,
+        cosine * (.089 + drape - inside) - .008,
+      ];
+      const blend = sstep(0, 1, v);
+      // Blend the curved cut into the leg while retaining the exact sewn edge at v=0.
+      return [lerp(join[0], edge[0], blend), lerp(join[1], edge[1], v), lerp(join[2], edge[2], blend)];
+    };
+    const uv = (u, v) => [.25 + side * u, .69 * (1 - v)];
+    return [
+      surface(96, 50, run, {wrapU: true, uvFn: uv}),
+      surface(96, 6, (u, v) => { const p = run(u, 1, .0035 * v); p[1] += .010 * v; return p; }, {wrapU: true, uvFn: (u, v) => uv(u, 1 - v * .02)}),
+    ];
+  };
+  const band = surface(136, 12, (u, v) => {
+    const th = (u - .25) * TAU;
+    const gather = (.6 + .4 * Math.sin(v * Math.PI)) * (.0013 * Math.sin(th * 35) + .0007 * Math.cos(th * 49));
+    const roll = .0011 * Math.sin(v * Math.PI);
+    return [(0.173 + roll + gather) * Math.sin(th), -.001 + .035 * v, (0.108 + roll + gather) * Math.cos(th)];
+  }, {wrapU: true});
+  return { top, left: leg(-1), right: leg(1), band };
+}
+
+export function flagGeo(w = 1.2, h = .8) {
+  const geo = new THREE.PlaneGeometry(w, h, 78, 40);
+  geo.translate(w / 2, 0, 0);
+  geo.userData.width = w;
+  waveFlag(geo, 0);
+  return geo;
+}
+export function waveFlag(geo, t) {
+  const positions = geo.attributes.position;
+  const b = geo.userData.base || (geo.userData.base = positions.array.slice());
+  const w = geo.userData.width;
+  for (let i = 0; i < positions.count; i++) {
+    const x = b[i * 3], y = b[i * 3 + 1], k = clamp(x / w, 0, 1);
+    const softness = Math.pow(k, .83);
+    const z = softness * (.062 * Math.sin(k * 9 - t * 1.52 + y * 2.3) + .016 * Math.sin(k * 17 - t * 2.12 + y * 6.7));
+    const fall = k * k * (.054 + .016 * Math.sin(t * .62 - k * 2));
+    positions.setXYZ(i, x - .040 * k * k, y - fall + softness * .018 * Math.sin(k * 7.3 - t * 1.21), z);
   }
-  const teeth = new THREE.BufferGeometry(); teeth.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); teeth.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3)); teeth.setIndex(idx);
-  return { tape, teeth };
+  positions.needsUpdate = true;
+  geo.computeVertexNormals();
 }
-/* kangaroo pocket: a second fabric layer following the torso surface, with rounded side openings */
-// kangaroo pocket of a zip hoodie: two halves either side of the zipper, curved slit openings at the outer sides
+
+/* Low-profile six-panel trucker cap with a curved sandwich visor and rear closure. */
+export const CAP_SEAMS = Array.from({ length: 6 }, (_, i) => .75 - 1 / 12 + i / 6);
+export function cap() {
+  const RX = .105, RZ = .118, RY = .104;
+  const crownAt = (u, v) => {
+    const a = u * TAU, b = v * Math.PI / 2;
+    const z = Math.sin(a);
+    const front = Math.max(0, z);
+    const taper = Math.pow(Math.max(0, Math.cos(b)), .73);
+    const panel = Math.pow(.5 + .5 * Math.cos((u - .25) * 6 * TAU), 2.5) * .0027 * Math.sin(Math.PI * v);
+    const pinch = Math.sin(a * 11 + 2 * v) * .0012 * Math.exp(-Math.pow((v - .2) / .18, 2));
+    const shape = taper * (1 + .12 * front * Math.sin(v * Math.PI));
+    const baseY = -.006 + .013 * Math.pow(Math.cos(a), 2) + .004 * z;
+    return [(RX * shape - panel + pinch) * Math.cos(a),
+      baseY * (1 - v) + RY * Math.sin(b) * (1 + .06 * front * (1 - v)),
+      (RZ * shape - panel + pinch) * z - .024 * Math.pow(v, 1.25)];
+  };
+  const cut = u => Math.sqrt(Math.max(0, 1 - Math.pow((u - .75) / .088, 2))) * .245;
+  const crownSurface = (u, v, inner = false) => {
+    const point = crownAt(u, lerp(cut(u), 1, v));
+    if (inner) { point[0] *= .978; point[2] *= .977; point[1] -= .002; }
+    return point;
+  };
+  const crown = surface(156, 58, crownSurface, {wrapU: true, uvFn: (u, v) => [1 - u, lerp(cut(u), 1, v)]});
+  const inner = surface(130, 14, (u, v) => crownSurface(u, v * .28, true), {wrapU: true});
+  const band = surface(156, 8, (u, v) => {
+    const outer = crownSurface(u, .065 * v);
+    outer[0] *= 1.009 + .009 * Math.sin(v * Math.PI);
+    outer[2] *= 1.009 + .009 * Math.sin(v * Math.PI);
+    return outer;
+  }, {wrapU: true});
+  const visorFn = (u, v, layer = 0) => {
+    const a = lerp(.33, Math.PI - .33, u);
+    const base = crownAt(a / TAU, 0.025);
+    const curve = Math.pow(Math.sin(u * Math.PI), .61);
+    const cosine = Math.cos(a);
+    return [
+      base[0] * (1 - .15 * curve * v * Math.abs(cosine)),
+      base[1] - (.018 + .037 * cosine * cosine) * v * curve - layer,
+      base[2] + .087 * curve * v,
+    ];
+  };
+  const visorTop = surface(98, 26, visorFn);
+  const visorBottom = surface(98, 16, (u, v) => visorFn(u, v, .0035));
+  const visorEdge = surface(98, 6, (u, v) => {
+    const point = visorFn(u, 1, .0035 * v);
+    point[2] += .0013 * Math.sin(v * Math.PI);
+    return point;
+  });
+  const button = new THREE.SphereGeometry(.007, 24, 12, 0, TAU, 0, Math.PI / 2);
+  button.scale(1, .57, 1); button.translate(0, RY, -.024);
+  const snaps = surface(48, 8, (u, v) => {
+    const x = (u - .5) * .113;
+    return [x, -.005 + .014 * v + .004 * Math.sin(u * Math.PI), -RZ + .11 * x * x + Math.abs(x) * .29];
+  });
+  const closure = Array.from({length: 6}, (_, i) => {
+    const x = -.025 + .009 * i;
+    const button = new THREE.SphereGeometry(.00165, 10, 7);
+    button.translate(x, .006, -RZ + Math.abs(x) * .29 - .0006);
+    return button;
+  });
+  return { crown, inner, visorTop, visorBottom, visorEdge, button, band, snaps, closure };
+}
+
+export function zipperParts(fn) {
+  const track = v => {
+    if (v >= .07) return fn(.25, (v - .07) / .93 * .995);
+    const hem = fn(.25, 0);
+    return [hem[0], hem[1] + (v / .07 - 1) * .048, hem[2] * lerp(.95, 1, v / .07)];
+  };
+  const tape = surface(8, 116, (u, v) => {
+    const [x, y, z] = track(v);
+    const cross = (u - .5) * 2;
+    return [x + cross * .010, y, z + .0035 + (1 - cross * cross) * .0016];
+  });
+  const tooth = new THREE.BoxGeometry(.0038, .00138, .0022);
+  const unit = tooth.attributes.position;
+  const normals = tooth.attributes.normal;
+  const indices = tooth.index.array;
+  const pos = [], nrm = [], index = [];
+  const count = 188;
+  for (let i = 0; i < count; i++) {
+    const [x, y, z] = track(.017 + .967 * i / (count - 1));
+    const side = i % 2 ? 1 : -1;
+    const first = pos.length / 3;
+    for (let k = 0; k < unit.count; k++) {
+      pos.push(x + side * .0013 + unit.getX(k) * (unit.getZ(k) > 0 ? .86 : 1), y + unit.getY(k), z + .0055 + unit.getZ(k));
+      nrm.push(normals.getX(k), normals.getY(k), normals.getZ(k));
+    }
+    indices.forEach(value => index.push(value + first));
+  }
+  tooth.dispose();
+  const teeth = new THREE.BufferGeometry();
+  teeth.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  teeth.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+  teeth.setIndex(index);
+  return {tape, teeth, top: track(.995), bottom: track(.012)};
+}
+export function zipperPull() {
+  const shape = new THREE.Shape();
+  shape.moveTo(-.0038, 0); shape.lineTo(.0038, 0);
+  shape.quadraticCurveTo(.0053, -.002, .0047, -.006);
+  shape.lineTo(.0037, -.020);
+  shape.quadraticCurveTo(.0034, -.023, 0, -.023);
+  shape.quadraticCurveTo(-.0034, -.023, -.0037, -.020);
+  shape.lineTo(-.0047, -.006);
+  shape.quadraticCurveTo(-.0053, -.002, -.0038, 0);
+  const opening = new THREE.Path();
+  opening.absellipse(0, -.006, .0025, .0031, 0, TAU, true);
+  shape.holes.push(opening);
+  return new THREE.ExtrudeGeometry(shape, { depth: .0014, bevelEnabled: true, bevelSize: .00055, bevelThickness: .00045, bevelSegments: 2, steps: 1, curveSegments: 8 });
+}
+/* Two lined halves of a kangaroo pocket, shaped around the hand openings. */
 const PK = { vB: 0.075, vT: 0.36 };
 function pocketUV(side) { // side -1 = left half (u < .25), +1 = right half
   const uo = side < 0 ? 0.155 : 0.345, ui = side < 0 ? 0.2405 : 0.2595;
@@ -332,7 +505,9 @@ export function pocket(fn, side) {
   const UV = pocketUV(side);
   return surface(40, 26, (s, t) => {
     const [u, v] = UV(s, t), p = fn(u, v), l = Math.hypot(p[0], p[2]) || 1;
-    const puff = 0.0028 + Math.sin(Math.min(1, s * 1.1) * Math.PI * 0.5) * Math.sin(t * Math.PI) * 0.003;
+    const lip = .0037 * Math.pow(1 - s, 5) * Math.sin(Math.PI * t);
+    const volume = .0045 * Math.sin(Math.PI * s) * Math.sin(Math.PI * t);
+    const puff = .0008 + lip + volume;
     return [p[0] + p[0] / l * puff, p[1], p[2] + p[2] / l * puff];
   }, { uvFn: (s, t) => { const [u, v] = UV(s, t); return fn.uv(u, v); } });
 }

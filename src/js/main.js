@@ -271,7 +271,7 @@ function wire() {
     if (!button || button.disabled || button.closest('.cw')) return;
     const { v, z, i, hex } = button.dataset;
     if (button.matches('.chip')) setProduct(v);
-    if (button.closest('.fab')) { state.tela = v; sync(); api?.repaint('fade'); }
+    if (button.closest('.fab')) { state.tela = v; sync(); api?.repaint(); }
     if (z) selectZone(z);
     if (hex) { state.colors[zone] = hex; wheel.set(hex); sync(); liveRepaint(true); }
     if (button.id === 'editColor') {
@@ -282,15 +282,15 @@ function wire() {
       if (active?.kind === 'print' && active.i === Number(i)) closeWheel();
       else openWheel({ kind: 'print', key: PCOL[i], i: Number(i) }, $('#slotPrint'), `Color ${Number(i) + 1} del estampado`);
     }
-    if (button.closest('.prints')) { state.preset = v; sync(); api?.repaint('wipe'); }
-    if (button.closest('.sizes')) { state.talle = v; sync(); }
+    if (button.closest('.prints')) { state.preset = v; sync(); api?.repaint(); }
+    if (button.closest('.sizes')) { state.talle = v; sync(); if (state.producto === 'bandera') api?.rebuild(false); }
     if (button.id === 'clearText') {
       $$('#grp-texto .field:not([hidden]) input').forEach(input => { state[input.dataset.k] = ''; });
       sync();
-      api?.repaint('fade');
+      api?.repaint();
     }
   });
-  $('#printAll').addEventListener('change', e => { state.printAll = e.target.checked; sync(); api?.repaint('wipe'); });
+  $('#printAll').addEventListener('change', e => { state.printAll = e.target.checked; sync(); api?.repaint(); });
   let textTimer;
   $$('#groups input[data-k]').forEach(input => {
     input.addEventListener('input', () => {
@@ -300,7 +300,7 @@ function wire() {
       sync();
       if (key === 'cantidad') return;
       clearTimeout(textTimer);
-      textTimer = setTimeout(() => api?.repaint('fade'), 100);
+      textTimer = setTimeout(() => api?.repaint(), 100);
     });
     input.addEventListener('focus', () => {
       if (input.id === 'fCant') return;
@@ -329,7 +329,7 @@ function wire() {
       $('#removeLogo').hidden = false;
       sync();
       showAngle(0);
-      api?.repaint('fade');
+      api?.repaint();
       toast('Logo aplicado al diseño');
     };
     image.onerror = () => {
@@ -352,7 +352,7 @@ function wire() {
     $('#removeLogo').hidden = true;
     $('#logoLabel').textContent = 'Subí tu logo';
     sync();
-    api?.repaint('fade');
+    api?.repaint();
     file.focus();
   });
   tabs.addEventListener('click', e => {
@@ -385,7 +385,7 @@ function liveRepaint(commit) {
   if (!api) return;
   const now = performance.now(), gap = api.lowPower ? 230 : 100;
   clearTimeout(repaintTimer);
-  const repaint = () => { lastRepaint = performance.now(); api.repaint('fade'); };
+  const repaint = () => { lastRepaint = performance.now(); api.repaint(); };
   if (commit || now - lastRepaint > gap) repaint();
   else repaintTimer = setTimeout(repaint, gap - (now - lastRepaint));
 }

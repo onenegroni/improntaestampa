@@ -52,7 +52,7 @@ async function run(browser, mobile) {
     console.log('  Product and fabric controls passed');
     // The canvas can open the right color section directly. A normal drag only rotates.
     await page.locator('#viewer').scrollIntoViewIfNeeded();
-    const sleeve = await page.evaluate(() => window.__impronta.api.zoneScreenPoint('mangas'));
+    const sleeve = await (await page.waitForFunction(() => window.__impronta.api.zoneScreenPoint('mangas'))).jsonValue();
     assert.ok(sleeve, 'Sleeve appears in the viewport');
     if (mobile) await page.touchscreen.tap(sleeve.x, sleeve.y);
     else await page.mouse.click(sleeve.x, sleeve.y);

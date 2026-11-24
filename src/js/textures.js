@@ -153,12 +153,37 @@ export function drawLogo(g, img, x, y, size) {
 }
 
 /* Torso canvas 2048x1024: front = left half (center x=512), back = right half (center x=1536). */
-function stitch(g, sx, base, path) {
-  g.save(); g.setLineDash([9 * sx, 6 * sx]); g.lineCap = 'round';
-  g.strokeStyle = 'rgba(0,0,0,.28)'; g.lineWidth = 3.4 * sx; g.translate(0, 1.4 * sx); path(); g.translate(0, -1.4 * sx);
-  g.strokeStyle = lum(base) > 0.6 ? 'rgba(0,0,0,.22)' : 'rgba(255,255,255,.2)'; g.lineWidth = 2.2 * sx; path(); g.restore();
+function stitch(g, scale, base, path) {
+  g.save();
+  g.lineCap = 'round';
+  g.strokeStyle = 'rgba(15,12,10,.22)';
+  g.lineWidth = 2.1 * scale;
+  path();
+  g.translate(0, -1.25 * scale);
+  g.setLineDash([5 * scale, 3.2 * scale]);
+  g.strokeStyle = lum(base) > .38 ? 'rgba(22,20,17,.28)' : 'rgba(240,232,222,.22)';
+  g.lineWidth = 1.85 * scale;
+  path();
+  g.restore();
 }
-export function torsoCanvas(cv, st, { vOf, product, pocket = null }) {
+function line(g, x1, y1, x2, y2) {
+  g.beginPath();
+  g.moveTo(x1, y1);
+  g.lineTo(x2, y2);
+  g.stroke();
+}
+function sewPath(g, points, width, height) {
+  g.beginPath();
+  let last = -2;
+  for (const [u, v] of points) {
+    const x = u * width, y = (1 - v) * height;
+    if (Math.abs(u - last) > .25) g.moveTo(x, y);
+    else g.lineTo(x, y);
+    last = u;
+  }
+  g.stroke();
+}
+export function torsoCanvas(cv, st, { vOf, product, pocket = null, shoulderSeams }) {
   const W = cv.width, H = cv.height, g = cv.getContext('2d');
   drawPattern(g, st.preset, st.colors.cuerpo, pcols(st), W, H, { seed: 11, k: W / 2048, region: 'body' });
   const Y = y => (1 - vOf(y)) * H;
@@ -166,6 +191,7 @@ export function torsoCanvas(cv, st, { vOf, product, pocket = null }) {
   const base = st.preset === 'galactico' ? '#0a0f2a' : (st.preset === 'tiedye' || st.preset === 'manitos') ? '#1b1f3b' : st.colors.cuerpo;
   const t = ink(base), sx = W / 2048;
   g.textBaseline = 'alphabetic';
+  if (shoulderSeams) shoulderSeams.forEach(points => stitch(g, sx, base, () => sewPath(g, points, W, H)));
   // front chest
   const nm = (st.nombre || '').toUpperCase();
   if (product !== 'campera') {
@@ -185,7 +211,7 @@ export function torsoCanvas(cv, st, { vOf, product, pocket = null }) {
       stitch(g, sx, base, () => { g.beginPath(); pts.forEach(([x, y], i) => { const xx = x + (i <= 24 ? dir * 7 : 0) * sx, yy = y + (i > 24 ? 7 : 0) * sx; i ? g.lineTo(xx, yy) : g.moveTo(xx, yy); }); g.stroke(); }); });
   }
   // double-needle hem + side seams (subtle, like real cut-and-sewn garments)
-  if (product !== 'campera') stitch(g, sx, base, () => { [0.021, 0.03].forEach(d => { g.beginPath(); g.moveTo(0, Y(-0.34 + d)); g.lineTo(W, Y(-0.34 + d)); g.stroke(); }); });
+  if (product !== 'campera') stitch(g, sx, base, () => { [0.016, 0.022].forEach(d => { g.beginPath(); g.moveTo(0, Y(-0.34 + d)); g.lineTo(W, Y(-0.34 + d)); g.stroke(); }); });
   g.save(); g.globalAlpha = 0.22; g.strokeStyle = mix(base, '#000000', 0.55); g.lineWidth = 2.5 * sx; [0, W / 2, W].forEach(x => { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }); g.restore();
   const Yb = y => Y(y + (product === 'campera' ? -0.04 : 0));
   // back
@@ -219,21 +245,58 @@ export function plainCanvas(cv, st, zone, { pattern = false, seed = 5 } = {}) {
 }
 export function sleeveCanvas(cv, st, { stripe = true } = {}) {
   plainCanvas(cv, st, 'mangas', { pattern: st.printAll, seed: 9 });
-  const g = cv.getContext('2d'); const W = cv.width, H = cv.height;
-  if (stripe) { g.fillStyle = st.colors.punos; g.fillRect(0, H * 0.04, W, H * 0.035); }
-  // hem topstitch near the sleeve opening
-  const sx = W / 1024; stitch(g, sx, st.colors.mangas, () => { [0.1, 0.118].forEach(f => { g.beginPath(); g.moveTo(0, H * f); g.lineTo(W, H * f); g.stroke(); }); });
+  const g = cv.getContext('2d'), W = cv.width, H = cv.height;
+  const shade = g.createLinearGradient(0, 0, 0, H * .18);
+  shade.addColorStop(0, 'rgba(10,10,10,.18)');
+  shade.addColorStop(.45, 'rgba(10,10,10,.055)');
+  shade.addColorStop(1, 'rgba(10,10,10,0)');
+  g.fillStyle = shade;
+  g.fillRect(0, 0, W, H * .18);
+  stitch(g, W / 1024, st.colors.mangas, () => {
+    [stripe ? .936 : .967, stripe ? .952 : .982].forEach(y => line(g, 0, y * H, W, y * H));
+    line(g, .748 * W, .20 * H, .748 * W, H);
+  });
 }
-export function shortCanvas(cv, st) {
+export function hoodCanvas(cv, st) {
+  plainCanvas(cv, st, 'capucha', {pattern: st.printAll, seed: 13});
+  const g = cv.getContext('2d'), W = cv.width, H = cv.height;
+  stitch(g, W / 1024, st.colors.capucha, () => {
+    line(g, W * .494, 0, W * .494, H);
+    line(g, W * .506, 0, W * .506, H);
+    line(g, 0, H * .042, W, H * .042);
+  });
+}
+export function shortCanvas(cv, st, withoutNumber) {
   const g = cv.getContext('2d'), W = cv.width, H = cv.height;
   drawPattern(g, st.preset === 'splash' ? 'liso' : st.preset, st.colors.cuerpo, pcols(st), W, H, { seed: 21, k: W / 2048 });
-  // side stripes at u=0 and u=0.5 (sides)
-  g.fillStyle = st.colors.acento; [0, 0.5, 1].forEach(u => g.fillRect(u * W - 18, 0, 36, H));
-  g.fillStyle = ink(st.colors.cuerpo); if (st.numero) { g.font = `${110}px Anton`; g.textAlign = 'center'; g.fillText(String(st.numero).slice(0, 3), W * 0.32, H * 0.75); }
+  const sx = W / 1024;
+  g.fillStyle = st.colors.acento;
+  [0, .5, 1].forEach(u => g.fillRect((u - .009) * W, 0, .018 * W, H));
+  stitch(g, sx, st.colors.cuerpo, () => {
+    [.944, .962].forEach(y => line(g, 0, y * H, W, y * H));
+    [.013, .487, .513, .987].forEach(x => line(g, x * W, 0, x * W, .95 * H));
+  });
+  withoutNumber.getContext('2d').drawImage(cv, 0, 0);
+  if (st.numero) {
+    g.fillStyle = ink(st.colors.cuerpo);
+    g.textAlign = 'center';
+    g.font = `${84 * sx}px Anton`;
+    g.fillText(String(st.numero).slice(0, 3), W * .31, H * .76);
+  }
 }
 export function flagCanvas(cv, st) {
   const g = cv.getContext('2d'), W = cv.width, H = cv.height;
   drawPattern(g, st.preset, st.colors.cuerpo, pcols(st), W, H, { seed: 31, k: W / 2048 });
+  const trim = W * .014;
+  g.fillStyle = 'rgba(17,17,17,.15)';
+  g.fillRect(0, 0, W, trim); g.fillRect(0, H - trim, W, trim);
+  g.fillRect(0, 0, trim * 1.27, H); g.fillRect(W - trim, 0, trim, H);
+  stitch(g, W / 2048, st.colors.cuerpo, () => {
+    [.66, 1.12].forEach(multiplier => {
+      const edge = trim * multiplier;
+      g.strokeRect(edge * 1.24, edge, W - edge * 2.24, H - edge * 2);
+    });
+  });
   const t = ink(st.preset === 'galactico' ? '#0a0f2a' : st.colors.cuerpo);
   g.textAlign = 'center'; g.fillStyle = t;
   const big = (st.espalda || '').toUpperCase();
@@ -241,12 +304,29 @@ export function flagCanvas(cv, st) {
   if (st.escuela) { g.font = `600 64px "Barlow Condensed"`; fitText(g, st.escuela.toUpperCase(), s => `600 ${s}px "Barlow Condensed"`, W * 0.7, 64); g.fillText(st.escuela.toUpperCase(), W / 2, H * 0.72); }
   if (st.logoImg) drawLogo(g, st.logoImg, W / 2, H * 0.2, 220); else imMark(g, W / 2, H * 0.2, 80);
 }
-export function capCanvas(cv, st) {
+export function capCanvas(cv, st, seams) {
   const g = cv.getContext('2d'), W = cv.width, H = cv.height;
-  drawPattern(g, st.preset, st.colors.cuerpo, pcols(st), W, H, { seed: 41, k: W / 2048 * 0.7 });
-  // panel seams
-  g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 3; for (let i = 0; i < 6; i++) { g.beginPath(); g.moveTo(i / 6 * W, 0); g.lineTo(i / 6 * W, H); g.stroke(); }
-  // front logo/text at u=0.25 (front = +z => g=PI/2 => u=0.25)
+  drawPattern(g, st.preset, st.colors.cuerpo, pcols(st), W, H, { seed: 41, k: W / 2048 * .7 });
+  const sx = W / 1024;
+  const c = st.colors.cuerpo;
+  // Fine open weave on the four rear panels. The front remains printable.
+  const mesh = new Path2D();
+  for (let y = 3; y < H * .82; y += 7 * sx) {
+    for (let x = sx * (2 + (Math.round(y / (7 * sx)) % 2) * 3); x < W; x += 6 * sx) {
+      if (x > W * .585 && x < W * .915) continue;
+      mesh.moveTo(x + 1.2 * sx, y); mesh.ellipse(x, y, 1.2 * sx, .93 * sx, 0, 0, Math.PI * 2);
+    }
+  }
+  g.fillStyle = lum(c) > .38 ? 'rgba(7,10,11,.32)' : 'rgba(0,0,0,.40)';
+  g.fill(mesh);
+  for (const raw of seams) {
+    const x = (raw % 1) * W;
+    stitch(g, sx, c, () => {
+      line(g, x - 2.6 * sx, 0, x - 2.6 * sx, H);
+      line(g, x + 2.6 * sx, 0, x + 2.6 * sx, H);
+    });
+  }
+  stitch(g, sx, c, () => line(g, 0, H * .936, W, H * .936));
   const t = ink(st.preset === 'galactico' ? '#0a0f2a' : st.colors.cuerpo);
   if (st.logoImg) drawLogo(g, st.logoImg, W * 0.75, H * 0.58, H * 0.34);
   if (st.espalda) {
@@ -257,6 +337,13 @@ export function capCanvas(cv, st) {
     g.fillText(caption, W * 0.75, H * (st.logoImg ? 0.37 : 0.60));
   }
 }
+export function visorCanvas(cv, st) {
+  plainCanvas(cv, st, 'mangas');
+  const g = cv.getContext('2d'), W = cv.width, H = cv.height;
+  stitch(g, W / 768, st.colors.mangas, () => {
+    [.10, .17, .24, .31, .38].forEach(y => line(g, 0, H * y, W, H * y));
+  });
+}
 export function knitNormal(size = 256, kind = 'jersey') {
   const cv = document.createElement('canvas'); cv.width = cv.height = size; const g = cv.getContext('2d'); const img = g.createImageData(size, size);
   const height = (x, y) => {
@@ -264,6 +351,10 @@ export function knitNormal(size = 256, kind = 'jersey') {
     const cycle = Math.PI * 2;
     if (kind === 'rib') {
       return Math.cos(u * cycle * 14) * .85 + Math.sin(v * cycle * 29 + Math.sin(u * cycle * 14)) * .14;
+    }
+    if (kind === 'twill') {
+      return .57 * Math.sin((u * 26 + v * 37) * cycle) * Math.sin(v * 40 * cycle)
+        + .23 * Math.sin(u * 48 * cycle);
     }
     if (kind === 'mesh') {
       const row = Math.floor(v * 28), fx = ((u * 24 + row * .5) % 1) - .5, fy = (v * 28 % 1) - .5;
