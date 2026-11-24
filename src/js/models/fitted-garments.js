@@ -13,11 +13,11 @@ const assets = {
   tee: [tee, top],
   kit: [kit, top],
   tank: [tank, top],
-  hoodie: [hoodie, ['torso', 'sleeve', 'punos', 'hood', 'neckTape', 'zipMetal', 'cord', 'bodyThread']],
+  hoodie: [hoodie, ['torso', 'sleeve', 'punos', 'hood', 'neckTape', 'zipMetal', 'cord', 'bodyThread', 'hoodThread', 'lining']],
   shorts: [shorts, ['short', 'shortPlain', 'punos', 'cord', 'shortThread']],
 };
 const insideNames = {
-  torso: 'facing', sleeve: 'sleeveFacing', hood: 'lining',
+  torso: 'facing', sleeve: 'sleeveFacing',
   short: 'shortFacing', shortPlain: 'shortFacing',
 };
 const vertexBytes = 14;
@@ -62,7 +62,7 @@ function decode(kind) {
     decoded.push(panel);
     const insideName = insideNames[name];
     if (!insideName) continue;
-    const thickness = kind === 'hoodie' ? .00225 : .00135;
+    const thickness = kind === 'hoodie' ? .00245 : .00135;
     const inside = position.map((coordinate, i) => coordinate - normal[i] * thickness);
     const facing = {
       ...panel,

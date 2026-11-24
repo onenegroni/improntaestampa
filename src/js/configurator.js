@@ -83,13 +83,14 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   const fabrics = {
     deportiva: { kind: 'mesh', sources: [sportsNormal, sportsSurface, sportsGrain], roughness: .92, sheen: .17, sheenRoughness: .76, scale: .69, spec: .22 },
     modal: { kind: 'jersey', sources: [jerseyNormal, jerseySurface, jerseyGrain], roughness: .97, sheen: .21, sheenRoughness: .87, scale: .76, spec: .14 },
-    frizado: { kind: 'fleece', sources: [fleeceNormal, fleeceSurface, fleeceGrain], roughness: .98, sheen: .26, sheenRoughness: .90, scale: .57, spec: .10 },
+    frizado: { kind: 'fleece', sources: [fleeceNormal, fleeceSurface, fleeceGrain], roughness: .99, sheen: .34, sheenRoughness: .92, scale: .66, spec: .078 },
   };
   const panelRepeats = {
     torso: [3.3, 1.9], sleeve: [1.34, .59], longSleeve: [1.36, 1.46],
-    hood: [1.74, .89], lining: [1.74, .89], short: [1.45, 1.54], shortPlain: [1.45, 1.54],
+    hood: [1.24, .91], lining: [1.24, .91], fleeceTorso: [2.48, 1.75], short: [1.45, 1.54], shortPlain: [1.45, 1.54],
   };
   const panelFor = (part, product) => {
+    if (product === 'campera' && (part === 'torso' || part === 'facing')) return 'fleeceTorso';
     if (part === 'sleeveFacing') return product === 'campera' ? 'longSleeve' : 'sleeve';
     if (part === 'shortFacing') return 'short';
     if (part === 'sleeve' && product === 'campera') return 'longSleeve';
@@ -241,21 +242,22 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       facing: inside,
       sleeveFacing: inside,
       shortFacing: inside,
-      lining: inside,
+      lining: () => fabricMat(null, { side }),
       punos: () => colorMat(state.colors.punos, { side }),
       cord: () => colorMat(state.colors.punos, { side }),
       bodyThread: () => stitches(texes.torso),
+      hoodThread: () => stitches(texes.hood),
       sleeveThread: () => stitches(texes.sleeve),
       shortThread: () => stitches(texes.shortPlain),
       neckTape: () => own(new THREE.MeshStandardMaterial({
-        color: 0x232320, roughness: .92, normalMap: rib, side, vertexColors: true,
+        color: 0x242321, roughness: .97, normalMap: rib, normalScale: new THREE.Vector2(.28, .28), side, vertexColors: true,
       })),
       zipMetal: () => zipTeeth,
     };
     for (const { name, geometry } of fittedParts(kind)) {
       const material = parts[name] || (parts[name] = makeMaterial[name]());
       const panel = mesh(geometry, material);
-      panel.castShadow = !name.endsWith('Thread') && material.side !== THREE.BackSide;
+      panel.castShadow = name !== 'lining' && !name.endsWith('Thread') && material.side !== THREE.BackSide;
       if (kind === 'hoodie' && name === 'cord') {
         geometry.computeBoundingBox();
         const bounds = geometry.boundingBox;
@@ -297,12 +299,13 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     hangs.length = 0;
     const P = state.producto;
     const fitted = P !== 'bandera' && P !== 'gorra';
-    key.intensity = fitted ? 2.14 : 1.62;
+    const fleece = P === 'campera';
+    key.intensity = fleece ? 1.97 : fitted ? 2.14 : 1.62;
     key.color.setHex(fitted ? 0xfffcf9 : 0xfff8f3);
     key.shadow.bias = fitted ? -.00009 : -.00021;
     key.shadow.normalBias = fitted ? .0015 : .0044;
-    fill.intensity = fitted ? .45 : .76;
-    rim.intensity = fitted ? .66 : .76;
+    fill.intensity = fleece ? .59 : fitted ? .45 : .76;
+    rim.intensity = fleece ? .57 : fitted ? .66 : .76;
     product.rotation.set(0, 0, 0);
     product.position.set(0, 0, 0);
     paintTextures();
@@ -463,7 +466,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       const grainLayer = material.userData.clothGrain;
       if (grainLayer) {
         grainLayer.cloth.value = f.grainTexture || null;
-        grainLayer.relief.value = f.grainTexture ? 1.52 : 0;
+        grainLayer.relief.value = f.grainTexture ? (f.kind === 'fleece' ? 1.77 : 1.52) : 0;
         material.anisotropy = !lowPower && f.kind === 'mesh' ? .16 : 0;
       }
       if (!material.normalMap) continue;
@@ -476,7 +479,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       material.aoMapIntensity = .36;
       material.roughness = accessory ? .94 : f.roughness;
       material.roughnessMap = swatch.surface;
-      material.sheen = lowPower || accessory ? 0 : f.sheen;
+      material.sheen = accessory ? 0 : lowPower ? (f.kind === 'fleece' ? f.sheen * .48 : 0) : f.sheen;
       material.specularIntensity = accessory ? .22 : f.spec;
       material.sheenRoughness = f.sheenRoughness;
       if (!ribbed) material.normalMap = swatch.normal;

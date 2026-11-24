@@ -96,45 +96,69 @@ def add_uv(obj, kind):
     obj.data.uv_layers.active = uv
 
 
-def prepare_hoodie(obj, body):
-    panels = defaultdict(set)
-    for face in obj.data.polygons:
-        for i in face.vertices:
-            panels[i].add(face.material_index)
+def remove_original_hood(obj):
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.material_index == 3], context='FACES')
+    bm.to_mesh(obj.data)
+    bm.free()
+
+
+def pose_hoodie_arms(obj, *, garment):
+    # Pose both the panels and the collision form with their original skin
+    # weights. An armhole point keeps the portion bound to the rib cage.
+    groups = {group.name: group.index for group in obj.vertex_groups}
+    arms = {}
+    for side, suffix in ((1, 'l'), (-1, 'r')):
+        shoulder = Vector((side * .170, -.019, 1.320))
+        elbow = Vector((side * .331, -.020, 1.140))
+        wrist = Vector((side * .453, -.183, 1.016))
+        posed_elbow = Vector((side * (.258 + side * .006), -.026 - side * .012, 1.099 + side * .009))
+        posed_wrist = Vector((side * (.274 + side * .012), -.097 - side * .016, .878 + side * .011))
+        upper_axis, lower_axis = elbow - shoulder, wrist - elbow
+        arms[side] = (
+            tuple(groups[name + '_' + suffix] for name in ('upperarm', 'lowerarm', 'hand')),
+            shoulder, elbow, posed_elbow,
+            upper_axis.rotation_difference(posed_elbow - shoulder),
+            lower_axis.rotation_difference(posed_wrist - posed_elbow),
+            upper_axis.normalized(), lower_axis.normalized(),
+        )
     for vertex in obj.data.vertices:
         p = vertex.co.copy()
-        if panels[vertex.index] == {3}:
-            # Keep the existing crown and opening, and seat it against the
-            # upper back with space between the outer fleece and the lining.
-            p.x *= .77
-            p.z = 1.425 + (p.z - 1.445) * .72
-            resting_back = 1. - smoothstep(1.27, 1.40, p.z)
-            p.y += .010 + .015 * resting_back
-            shoulder = smoothstep(.06, .125, abs(p.x)) * smoothstep(1.344, 1.411, p.z)
-            p.z += shoulder * .010
-            p.y -= shoulder * .020
-        elif 2 in panels[vertex.index]:
-            side = math.copysign(1., p.x)
-            elbow = Vector((side * .331, -.020, 1.140))
-            axis = Vector((side * .122, -.163, -.124)).normalized()
-            distance = (p - elbow).dot(axis)
-            guide = elbow + axis * distance
-            wrist = smoothstep(.093, .227, distance)
-            p = guide + (p - guide) * (1. - .31 * wrist)
-            p = fit.relaxed_arm(p)
+        side = 1 if p.x > 0 else -1
+        indices, shoulder, elbow, target, rotate_upper, rotate_lower, upper, lower = arms[side]
+        weights = {group.group: group.weight for group in vertex.groups}
+        w_upper, w_lower, w_hand = (weights.get(index, 0.) for index in indices)
+        w_lower += w_hand
+        along = (p - elbow).dot(lower)
+        if garment:
+            # Full biceps and forearms, narrowing into a short rib cuff.
+            guide = elbow + lower * along
+            lower_ease = .12 - .25 * smoothstep(.138, .226, along)
+            forearm = p + (p - guide) * lower_ease
+            up_distance = (p - shoulder).dot(upper)
+            upper_guide = shoulder + upper * up_distance
+            arm = p + (p - upper_guide) * (.10 * smoothstep(.022, .107, up_distance))
         else:
-            hip = 1. - smoothstep(.934, 1.23, p.z)
-            p.x += math.copysign(.011 * hip, p.x)
-            p.y += .027 * hip * (p.y + .026)
-            # Break the even hem without tilting the zipper off centre.
-            p.z += p.x * .031 * hip
-        vertex.co = p
-    for vertex in body.data.vertices:
-        vertex.co = fit.relaxed_arm(vertex.co)
-        vertex.co.x *= .966
-        vertex.co.y = -.025 + (vertex.co.y + .025) * .975
+            arm, forearm = p, p
+        posed = p * max(0., 1. - w_upper - w_lower)
+        posed += (shoulder + rotate_upper @ (arm - shoulder)) * w_upper
+        posed += (target + rotate_lower @ (forearm - elbow)) * w_lower
+        if garment:
+            underarm = math.exp(-((p.z - 1.238) / .072)**2)
+            waist = math.exp(-((p.z - 1.004) / .115)**2)
+            torso = 1. - clamp((w_upper + w_lower) * 1.65)
+            posed.x += side * torso * (.0115 * waist + .009 * underarm) * smoothstep(.08, .175, abs(p.x))
+            posed.y += torso * (.030 + .045 * waist) * (p.y + .025)
+            hem = 1. - smoothstep(.832, .911, posed.z)
+            posed.x *= 1. - .046 * hem
+            posed.y = -.023 + (posed.y + .023) * (1. - .070 * hem)
+            posed.z += torso * hem * (.006 * p.x / .18)
+        else:
+            posed.x *= .966
+            posed.y = -.025 + (posed.y + .025) * .973
+        vertex.co = posed
     obj.data.update()
-    body.data.update()
 
 
 def prepare_shorts(obj):
@@ -206,23 +230,81 @@ def sculpt(mesh, kind):
             pressure += waist * (.0033 * math.cos(25 * a + .62 * math.cos(7 * a))
                                 + .00155 * math.cos(37 * a + .45))
         else:
-            arm = smoothstep(.181, .245, abs(x))
-            lower = 1. - smoothstep(1.17, 1.30, z)
-            # Staggered elbow compression on the forearm side, with a wider
-            # hollow above the cuff where gravity draws the sleeve down.
-            pressure = arm * lower * (
-                (.18 + .82 * front) * ridge(z - (1.097 + .018 * sign) + .52 * (y + .025), .018, .0062)
-                + (.24 + .76 * rear) * ridge(z - (1.032 + .011 * sign) - .52 * (y + .036), .024, .0054)
-                + front * ridge(z - (.968 - .012 * sign) + .37 * (y + .042), .014, .0046))
-            attachment = math.exp(-((abs(x) - .185) / .063)**2)
+            arm = smoothstep(.180, .235, abs(x))
+            near_elbow = math.exp(-((z - (1.069 + .014 * sign)) / .120)**2)
+            plane = smoothstep(-.13, .68, -n.y) * (.67 + .33 * smoothstep(-.1, .58, -sign*n.x))
+            crease = z - (1.083 + .014 * sign) + (.51 - .10 * sign) * (y + .031)
+            fore = z - (1.008 + .018 * sign) - .62 * (y + .043)
+            wrist = z - (.915 + .013 * sign) + .54 * (y + .061)
+            pressure = arm * (
+                plane * near_elbow * ridge(crease, .019, .0089)
+                + rear * near_elbow * ridge(fore, .029, .0048)
+                + (.32 + .68 * front) * ridge(wrist, .012, .0051)
+                + rear * ridge(wrist - .032, .015, .0040)
+            )
+            side_support = math.exp(-((abs(x) - .179) / .076)**2)
             body = 1. - arm
             pressure += body * (
-                front * attachment * ridge(z - 1.159 - .70 * (abs(x) - .17), .025, .0104)
-                + front * attachment * ridge(z - .916 + .46 * (abs(x) - .15), .022, .0070)
-                + rear * attachment * ridge(z - .945 - .49 * (abs(x) - .155), .029, .0086))
+                front * side_support * ridge(z - 1.156 - .58 * (abs(x) - .17), .027, .0066)
+                + front * side_support * ridge(z - (.971 + .023 * sign) + .54 * (abs(x) - .17), .023, .0080)
+                + rear * side_support * ridge(z - (.961 - .015 * sign) - .48 * (abs(x) - .155), .028, .0067)
+                + front * math.exp(-((abs(x)-.062)/.061)**2) * ridge(z - .919 - .48*abs(x), .024, .0044)
+            )
+            # The thicker finished hem draws the cloth into small uneven
+            # folds immediately above the waistband, fading into the body.
+            edge = math.atan2(x, -y - .022)
+            gather = math.exp(-((z - .888) / .030)**2)
+            pressure += body * gather * (.0029 * math.cos(17*edge + .72*math.cos(5*edge))
+                                          + .0013*math.cos(24*edge + .17))
+            if y < -.07:
+                strain = math.exp(-((abs(x) - .021) / .023)**2)
+                pressure += strain * (ridge(z - (.982 + abs(x) * .62), .032, .0022)
+                                      + ridge(z - (1.227 - abs(x) * .36), .049, .0025))
         points.append(p + n * pressure)
     for vertex, point in zip(mesh.vertices, points):
         vertex.co = point
+    mesh.update()
+
+
+def settle_hoodie_seams(mesh):
+    # Relax the cut-and-sewn shoulder line without erasing the collar or
+    # ironing out the longer folds across the sleeve and fleece body.
+    neighbors = defaultdict(list)
+    for edge in mesh.edges:
+        a, b = edge.vertices
+        neighbors[a].append(b)
+        neighbors[b].append(a)
+    loops = list(fit.edge_loops(mesh))
+    border = {i for loop in loops for i in loop}
+    for _ in range(5):
+        refined = []
+        for vertex in mesh.vertices:
+            p = vertex.co
+            outer = smoothstep(.087, .134, abs(p.x))
+            shoulder = math.exp(-((p.z - 1.324) / .056)**2)
+            weight = .55 * outer * shoulder * (1 - smoothstep(.225,.282,abs(p.x)))
+            connected = neighbors[vertex.index]
+            if vertex.index in border or weight < .025 or not connected:
+                refined.append(p.copy())
+            else:
+                mean = sum((mesh.vertices[i].co for i in connected),Vector()) / len(connected)
+                refined.append(p.lerp(mean,weight))
+        for vertex,p in zip(mesh.vertices,refined):
+            vertex.co = p
+    for loop in loops:
+        edge = [mesh.vertices[i].co.copy() for i in loop]
+        axis = sum(edge, Vector()) / len(edge)
+        if abs(axis.x) < .20 or axis.z > 1.0:
+            continue
+        side = math.copysign(1.,axis.x)
+        for vertex in mesh.vertices:
+            p = vertex.co
+            if p.x*side < .203 or abs(p.z-axis.z) > .061:
+                continue
+            distance = min((p-q).length for q in edge)
+            weight = 1 - smoothstep(.003,.031,distance)
+            p.x += (axis.x-p.x)*.27*weight
+            p.y += (axis.y-p.y)*.19*weight
     mesh.update()
 
 
@@ -272,57 +354,68 @@ def sleeve_distance(mesh, openings):
     return distance
 
 
-def cuff_face(triangle, sleeve, rib, width=.035):
-    def cut(inside):
-        poly = []
-        for a, b in zip(triangle, triangle[1:] + triangle[:1]):
-            ia, ib = (a[4] <= width) == inside, (b[4] <= width) == inside
-            if ia:
-                poly.append(a)
-            if ia != ib:
-                t = (width - a[4]) / (b[4] - a[4])
-                poly.append((a[0].lerp(b[0], t), a[1].lerp(b[1], t).normalized(),
-                             a[2].lerp(b[2], t), a[3] * (1-t) + b[3]*t, width))
-        return poly
+def clip_panel(polygon, measure):
+    result = []
+    for a, b in zip(polygon, polygon[1:] + polygon[:1]):
+        start, end = measure(a), measure(b)
+        if start >= 0.:
+            result.append(a)
+        if (start < 0.) != (end < 0.):
+            t = start / (start - end)
+            result.append((a[0].lerp(b[0], t), a[1].lerp(b[1], t).normalized(),
+                           a[2].lerp(b[2], t), a[3] * (1-t) + b[3]*t, a[4] * (1-t) + b[4]*t))
+    return result
 
-    outer = cut(False)
-    for i in range(1, len(outer) - 1):
-        for p, n, uv, ao, _ in (outer[0], outer[i], outer[i+1]):
-            sleeve.indices.append(sleeve.vertex(p, n, uv, ao))
-    cuff = cut(True)
-    for i in range(1, len(cuff) - 1):
-        face = (cuff[0], cuff[i], cuff[i+1])
+
+def emit_panel(target, polygon):
+    for i in range(1, len(polygon) - 1):
+        for p, n, uv, ao, _ in (polygon[0], polygon[i], polygon[i+1]):
+            target.indices.append(target.vertex(p, n, uv, ao))
+
+
+def knit_panel(polygon, shell, rib, width):
+    emit_panel(shell, clip_panel(polygon, lambda v: v[4] - width))
+    knit = clip_panel(polygon, lambda v: width - v[4])
+    for i in range(1, len(knit) - 1):
+        face = (knit[0], knit[i], knit[i+1])
         for p, n, uv, ao, dist in face:
-            shape = smoothstep(0., .009, dist) * (1. - smoothstep(width-.007, width, dist))
+            roll = smoothstep(.001, .008, dist) * (1. - smoothstep(width-.007, width, dist))
             tex = (uv.x, clamp(dist / width))
-            rib.indices.append(rib.vertex(p + n * (.0021 * shape), n, tex, ao))
+            rib.indices.append(rib.vertex(p + n * (.00235 * roll), n, tex, ao))
         for p, n, uv, ao, dist in reversed(face):
             tex = (uv.x, clamp(dist / width))
-            rib.indices.append(rib.vertex(p - n * .00225, -n, tex, .69 * ao))
+            rib.indices.append(rib.vertex(p - n * .00265, -n, tex, .69 * ao))
 
 
-def emit_panels(mesh, dest, names, cuff_dist=None):
+def emit_panels(mesh, dest, names, *, bands=None):
     surface = PanelSurface(mesh)
     ao = fit.bake_occlusion(mesh, surface.tree)
     for tri in surface.triangles:
-        name = names[mesh.polygons[tri.polygon_index].material_index]
+        panel = mesh.polygons[tri.polygon_index].material_index
+        name = names[panel]
         target = dest[name]
         loops = list(tri.loops)
-        if cuff_dist is not None and name == 'sleeve':
-            corners = [mesh.vertices[mesh.loops[i].vertex_index] for i in loops]
-            distances = [min(cuff_dist[v.index], .10) for v in corners]
-            if min(distances) <= .035:
-                cuff_face([(v.co, v.normal, surface.uv[i].uv, ao[v.index], d)
-                           for i, v, d in zip(loops, corners, distances)], target, dest['punos'])
-                continue
-        # Preserve periodic shorts texture interpolation at the inside leg.
         us = [surface.uv[i].uv.x for i in loops]
+        vertices = []
+        band = bands.get(name) if bands else None
         for i in loops:
             vertex = mesh.vertices[mesh.loops[i].vertex_index]
             uv = surface.uv[i].uv.copy()
             if max(us) - min(us) > .52 and uv.x < .46 and len(names) == 2:
                 uv.x = 1.
-            target.indices.append(target.vertex(vertex.co, vertex.normal, uv, ao[vertex.index]))
+            distance = min(band[0][vertex.index], .10) if band else .1
+            vertices.append((vertex.co, vertex.normal, uv, ao[vertex.index], distance))
+        if bands and panel == 0 and min(abs(p[0].x) for p in vertices) < .015:
+            # The closed zipper still has a true narrow break in the fleece.
+            panels = [clip_panel(vertices, lambda v: v[0].x - .0045),
+                      clip_panel(vertices, lambda v: -v[0].x - .0045)]
+        else:
+            panels = [vertices]
+        for polygon in panels:
+            if band and any(v[4] <= band[1] for v in polygon):
+                knit_panel(polygon, target, dest['punos'], band[1])
+            else:
+                emit_panel(target, polygon)
     return surface
 
 
@@ -409,47 +502,83 @@ def pocket(target, thread, surface, side):
         fit.stitch_segment(a, b, n, n, (surface.print_at(pa, ia), surface.print_at(pb, ib)), thread, .0006)
 
 
-def zipper(tape, teeth, surface):
-    center = []
-    for i in range(119):
-        z = .850 + .0036 * i
-        p, n, _, _ = surface.front(0., z)
-        if p is None:
-            continue
-        center.append(p)
-    # Extend the tape to the small gap at the front of the crew opening.
-    for i in range(1, 41):
-        p, _, _, _ = surface.front(0., 1.2748 + i * .0036)
-        if p is None:
-            break
-        center.append(p)
+def zip_link(target, center, width, height, depth):
+    # The chamfer catches a small highlight on each interlocking tooth.
     rows = []
-    n = Vector((0, -1, 0))
+    for ratio, y in ((1., 0.), (1., -depth*.60), (.77, -depth)):
+        p = center + Vector((0., y, 0.))
+        ring = []
+        for i, (x, z) in enumerate(((-1.,-1.),(1.,-1.),(1.,1.),(-1.,1.),(-1.,-1.))):
+            n = Vector((x*.37, -.9, z*.37)).normalized()
+            ring.append((p+Vector((width*x*ratio,0.,height*z*ratio)),n,(i/4,0.),1.))
+        rows.append(ring)
+    ribbon(target, rows)
+    face = [target.vertex(p, Vector((0.,-1.,0.)), uv, 1.) for p, _, uv, _ in rows[-1][:4]]
+    target.indices.extend(face[i] for i in (0,1,2,0,2,3))
+
+
+def zipper(fleece, rib, thread, tape, teeth, surface):
+    center = []
+    for i in range(206):
+        height = .812 + i * .00305
+        point, normal, _, _ = surface.front(0., height)
+        if point is not None and normal.y < -.18 and point.y < -.038:
+            center.append(point)
+    if len(center) < 5:
+        raise ValueError('Could not locate the zipper center line')
+    rows = []
+    n = Vector((0., -1., 0.))
     for i, p in enumerate(center):
-        rows.append([(p + Vector((x, -depth, 0.)), n, (u, i / (len(center) - 1)), ao)
-                     for x, depth, u, ao in [(-.007, .003, 0., .79), (-.0044, .0045, .18, .96),
-                     (0., .0054, .5, .69), (.0044, .0045, .82, .96), (.007, .003, 1., .79)]])
-        offset = -.00095 if i % 2 else .00095
-        p = p + Vector((offset, -.0071, 0.))
-        corners = [p + Vector((x, edge, dz)) for x, edge, dz in [
-            (-.0023, .0008, -.00123), (.0023, .0008, -.00123), (.0023, 0., .00123), (-.0023, 0., .00123)]]
-        row = [teeth.vertex(c, n, (u, v)) for c, (u, v) in zip(corners, [(0,0),(1,0),(1,1),(0,1)])]
-        teeth.indices.extend(row[i] for i in (0,1,2,0,2,3))
+        rows.append([(p+Vector((x,depth,0.)),n,(u,i/(len(center)-1)),occlusion)
+                     for x, depth, u, occlusion in [(-.0088,-.0004,0.,.78),
+                     (-.0035,.0003,.28,.80),(0.,.0012,.50,.64),
+                     (.0035,.0003,.72,.80),(.0088,-.0004,1.,.78)]])
+        offset = -.00068 if i % 2 else .00068
+        zip_link(teeth, p+Vector((offset,-.0006,0.)), .00223, .00117, .0020)
     ribbon(tape, rows)
-    top = center[-3] + Vector((0., -.0105, 0.))
-    # The pull loop is a closed piece of hardware, separate from the tape.
-    points = [top + Vector((.0035 * math.cos(i * math.tau / 32),
-                           -.0014 * math.sin(i * math.tau / 32),
-                           -.007 + .007 * math.sin(i * math.tau / 32))) for i in range(33)]
-    piping(teeth, points, .00124)
+
     for side in [-1, 1]:
-        entry, _, _, _ = surface.front(side * .052, 1.353)
-        if entry is None:
-            continue
-        grommet = [entry + Vector((.0036 * math.cos(i*math.tau/24), -.0064, .0036 * math.sin(i*math.tau/24)))
-                   for i in range(25)]
-        piping(teeth, grommet, .00085)
-        yield side, entry + Vector((0., -.007, 0.))
+        facing, stitches = [], []
+        for p in center:
+            q, natural, tri, _ = surface.front(side*.012, p.z)
+            if q is None:
+                continue
+            uv = surface.print_at(q, tri)
+            row = []
+            # Sewn seam, rolled edge, and fleece return facing the teeth.
+            for x, raised, shade in ((.016, .00015, .98),(.011, .00185, 1.),
+                                      (.0065,.00425,.98),(.0046,.00325,.87),
+                                      (.00455,-.00040,.68)):
+                xyz, normal, sample, _ = surface.front(side*x, p.z)
+                coord = xyz if xyz is not None else q
+                tex = surface.print_at(coord,sample) if sample is not None else uv
+                row.append((Vector((side*x,coord.y-raised,p.z)),natural,tex,shade))
+            facing.append(row if side < 0 else row[::-1])
+            stitches.append((row[1][0], natural, row[1][2]))
+        # At the hem the folded edge is knit from the waistband fabric.
+        # Keep the two materials joined without printing a fleece strip
+        # over the knit on either side of the zipper.
+        hem = center[0].z
+        join = next((i for i,row in enumerate(facing) if row[0][0].z >= hem+.0385), 1)
+        waistband = [
+            [(p,n,(side*.028+.5+j*.007,clamp((p.z-hem)/.0385)),ao)
+             for j,(p,n,_,ao) in enumerate(row)]
+            for row in facing[:join+1]
+        ]
+        ribbon(rib,waistband)
+        ribbon(fleece,facing[join:])
+        for (a,n0,uv0),(b,n1,uv1) in zip(stitches[join:], stitches[join+1:]):
+            if (b-a).length < .0062:
+                fit.stitch_segment(a,b,n0,n1,(uv0,uv1),thread,.00036)
+
+    start = center[0] + Vector((0., -.0013, .001))
+    zip_link(teeth,start,.0031,.0035,.0023)
+    top = center[-3] + Vector((0.,-.0035,0.))
+    zip_link(teeth,top,.0042,.0052,.0027)
+    pull = [top + Vector((.00315*math.cos(i*math.tau/28),
+                         -.004-.003*math.sin(i*math.tau/28),
+                         -.012+.008*math.sin(i*math.tau/28))) for i in range(29)]
+    piping(teeth, pull, .0013)
 
 
 def write_buffers(output, dest):
@@ -461,73 +590,214 @@ def write_buffers(output, dest):
     print(f'{output.stat().st_size:,} bytes compressed')
 
 
-def settle_hood(mesh):
-    # Use the outer back panel as the contact surface for the folded crown.
-    back = PanelSurface(mesh, {1})
-    crown = {i for face in mesh.polygons if face.material_index == 3 for i in face.vertices}
-    for i in crown:
-        p = mesh.vertices[i].co
-        hit, _, _, _ = back.tree.ray_cast(Vector((p.x, .48, p.z)), Vector((0., -1., 0.)), .65)
-        if hit is None:
-            continue
-        settle = 1. - smoothstep(1.29, 1.397, p.z)
-        supported = max(hit.y + .006, .27 * p.y + .73 * (hit.y + .020))
-        p.y += settle * (supported - p.y)
-    mesh.update()
+def section_curve(points, t):
+    # A cubic spline through the measured sewing landmarks.
+    n = len(points) - 1
+    s = clamp(t) * n
+    k = min(n - 1, int(s))
+    x = s - k
+    a, b, c, d = (points[i] for i in (max(0,k-1), k, k+1, min(n,k+2)))
+    return .5 * ((2*b) + (-a+c)*x + (2*a-5*b+4*c-d)*x*x + (-a+3*b-3*c+d)*x**3)
+
+
+def neck_halves(mesh, path):
+    positions = [mesh.vertices[i].co.copy() for i in path]
+    def score(index, side):
+        p = positions[index]
+        return side * p.y + .76 * abs(p.x)
+    front = min(range(len(path)), key=lambda i: score(i, 1))
+    back = min(range(len(path)), key=lambda i: score(i, -1))
+    halves = {}
+    for step in (-1, 1):
+        i = front
+        piece = [positions[i]]
+        while i != back:
+            i = (i + step) % len(path)
+            piece.append(positions[i])
+        side = 1 if sum(p.x for p in piece) > 0 else -1
+        halves[side] = piece
+    return halves
+
+
+def laid_hood(target, lining, thread, mesh, neckline):
+    halves = neck_halves(mesh, neckline)
+    body_back = PanelSurface(mesh, {1})
+    torso_surface = PanelSurface(mesh, {0, 1})
+    points = {}
+    count, depth = 52, 35
+
+    for side, neck in halves.items():
+        # Each fleece panel runs from the stitched neck seam to its opening
+        # and meets the other panel vertically down the back crown seam.
+        base = [p+Vector((0.,0.,.00115)) for p in neck]
+        base[0].x = side * .0085
+        base[-1].x = 0.
+        rim = [
+            base[0] + Vector((side*.001, -.004, .004)),
+            Vector((side*.049, -.052, 1.425 + .003*side)),
+            Vector((side*.095, -.015, 1.435 + .003*side)),
+            Vector((side*.124, .051, 1.418 - .002*side)),
+            Vector((side*.080, .101, 1.387 - .005*side)),
+            Vector((0., .114, 1.386)),
+        ]
+        spine = [
+            base[-1], Vector((0., .069, 1.382)),
+            Vector((0., .099, 1.323)), Vector((0., .109, 1.279)),
+            Vector((0., .124, 1.318)), rim[-1],
+        ]
+        rows = []
+        for i in range(count + 1):
+            u = i / count
+            a, b = section_curve(base, u), section_curve(rim, u)
+            row = []
+            for j in range(depth + 1):
+                v = j / depth
+                center = section_curve(spine, v) - base[-1].lerp(rim[-1], v)
+                p = a.lerp(b,v) + center * math.sin(.5*math.pi*u)**3.1
+                area = math.sin(math.pi*u)**1.4 * math.sin(math.pi*v)
+                p.x += side * .020 * area
+                valley = v - (.58 + .15*(u-.52) + side*.06)
+                fold = math.exp(-(valley/.092)**2) - .60*math.exp(-((valley+.12)/.088)**2)
+                p.y += area * (.012 + side*.0025) * fold
+                p.z -= area * (.011 + side*.004) * (u+.10)
+                # A turned opening has a rounded fold just inside the edge.
+                roll = math.exp(-((v-.886)/.082)**2)*math.sin(math.pi*u)**.63
+                p.z += .0056*roll
+                p.y -= .0043*roll
+                if p.y > .010 and p.z < 1.408 and v > .05:
+                    support, _, _, _ = body_back.tree.ray_cast(
+                        Vector((p.x,.45,p.z)),Vector((0.,-1.,0.)),.53)
+                    if support is not None:
+                        grade = smoothstep(.055,.27,v)
+                        gap = .009 + .021*smoothstep(1.29,1.405,p.z)*smoothstep(.31,.95,v)
+                        desired = support.y + gap
+                        p.y += (desired-p.y)*grade*(.67 if p.y > desired else 1.)
+                # In front of the back fold the hood platform is the shoulder,
+                # not the chest or the body interior. Constrain the clearance
+                # along its loft axis, then pick up the rear contact further back.
+                if v > .015 and p.y < .066:
+                    support, direction, _, _ = torso_surface.tree.ray_cast(
+                        Vector((p.x,p.y,1.57)), Vector((0.,0.,-1.)), .35)
+                    if support is not None and direction.z > .14:
+                        shoulder = 1. - smoothstep(.026,.066,p.y)
+                        clearance = .00235 + .00125*smoothstep(.02,.16,v)
+                        lift = max(0., support.z+clearance-p.z)
+                        p.z += shoulder*lift*smoothstep(.014,.091,v)
+                row.append(p)
+            rows.append(row)
+        points[side] = rows
+
+    # Both sides share one winding and one normal at the sewn crown.
+    # Matching the normal prevents a harsh lighting break down the seam.
+    right = points[1]
+    ref_i, ref_j = round(.42*count), round(.80*depth)
+    right_du = right[ref_i+1][ref_j] - right[ref_i-1][ref_j]
+    right_dv = right[ref_i][ref_j+1] - right[ref_i][ref_j-1]
+    right_winding = 1 if right_du.cross(right_dv).x > 0 else -1
+    seam_normals = []
+    for j in range(depth+1):
+        across = right[-2][j] - points[-1][-2][j]
+        along = right[-1][min(depth,j+1)] - right[-1][max(0,j-1)]
+        seam_normals.append(along.cross(across).normalized() * right_winding)
+    normal_rows = {}
+    for side, grid in points.items():
+        winding = right_winding * side
+        rows, inside, normals = [], [], []
+        for i, points_across in enumerate(grid):
+            u = i / count
+            row, inner, directions = [], [], []
+            for j, p in enumerate(points_across):
+                v = j / depth
+                du = grid[min(count,i+1)][j] - grid[max(0,i-1)][j]
+                dv = grid[i][min(depth,j+1)] - grid[i][max(0,j-1)]
+                n = du.cross(dv).normalized() * winding
+                n = n.lerp(seam_normals[j], smoothstep(.83,1.,u)).normalized()
+                tex = (.5+side*.5*(1-u),v)
+                row.append((p,n,tex,.88+.12*smoothstep(.10,.81,v)))
+                inner.append((p-n*.0028,-n,tex,.54+.26*smoothstep(.16,.98,v)))
+                directions.append(n)
+            rows.append(row)
+            inside.append(inner)
+            normals.append(directions)
+        normal_rows[side] = normals
+        ribbon(target,[row[::-1] if winding == 1 else row for row in rows])
+        ribbon(lining,[row if winding == 1 else row[::-1] for row in inside])
+        roll = []
+        for i in range(count + 1):
+            p = grid[i][-1]
+            n = normals[i][-1]
+            outward = (p-grid[i][-2]).normalized()
+            u = .5 + side*.5*(1-i/count)
+            roll.append([
+                (p-.0029*outward+.0014*n, n, (u,.982), .98),
+                (p+.0017*outward+.0010*n, (n+outward).normalized(), (u,.994), .95),
+                (p+.0021*outward-.0021*n, (outward-n).normalized(), (u,1.), .81),
+                (p-.0016*outward-.0030*n, -n, (u,.985), .71),
+            ])
+        ribbon(target, [row[::-1] if winding == 1 else row for row in roll])
+    # The center seam follows the crown turn and is stitched into the fabric.
+    center = points[1][-1]
+    normals = normal_rows[1][-1]
+    for j in range(depth):
+        fit.stitch_segment(center[j], center[j+1], normals[j], normals[j+1],
+                           ((.5,j/depth),(.5,(j+1)/depth)), thread, .0007)
+    return {side: grid[round(.17*count)][-5] for side, grid in points.items()}
 
 
 def resting_cord(entry, side, front):
     points = []
-    length = .146 + side * .013
-    for i in range(31):
-        t = i / 30
-        x = entry.x + side * (.018 * t - .008 * math.sin(math.pi * t))
-        z = entry.z - length * t
+    length = .171 + side * .016
+    for i in range(36):
+        t = i / 35
+        x = entry.x + side * (.010*t - .007*math.sin(math.pi*t))
+        z = entry.z - length*t
         p, _, _, _ = front.front(x, z)
-        if p is not None:
-            points.append(Vector((x, p.y - (.007 + .013 * t), z)))
+        natural = p.y if p is not None and p.y < -.055 else entry.y - .016*t
+        weight = smoothstep(.04, .37, t)
+        y = (entry.y-.006-.022*t)*(1-weight) + (natural-.010-.008*t)*weight
+        points.append(Vector((x,y,z)))
     return points
 
 
 def export_hoodie(obj, output):
     mesh = obj.data
-    names = ('torso', 'sleeve', 'punos', 'hood', 'neckTape', 'zipMetal', 'cord', 'bodyThread')
-    dest = {name: Buffer(name) for name in names}
-    openings = []
-    cuffs = []
+    names = ('torso','sleeve','punos','hood','neckTape','zipMetal','cord','bodyThread','hoodThread','lining')
+    dest = {name:Buffer(name) for name in names}
+    cuffs, waist, neck = [], None, None
     for path in fit.edge_loops(mesh):
         center = sum((mesh.vertices[i].co for i in path), Vector()) / len(path)
-        openings.append((path, center))
-        if abs(center.x) > .189 and center.z < 1.10:
+        if center.z > 1.32:
+            neck = path
+        elif abs(center.x) > .19:
             cuffs.append(path)
-    emit_panels(mesh, dest, ('torso', 'torso', 'sleeve', 'hood'), sleeve_distance(mesh, cuffs))
-    body_surface = PanelSurface(mesh, {0, 1})
-    sleeve_surface = PanelSurface(mesh, {2})
-    hood_surface = PanelSurface(mesh, {3})
-    all_panels = defaultdict(set)
-    for f in mesh.polygons:
-        for i in f.vertices:
-            all_panels[i].add(f.material_index)
-    for path, average in openings:
-        if all(all_panels[i] == {3} for i in path):
-            turned_edge(mesh, path, dest['hood'], hood_surface.tree, .007, .0029)
-        elif average.z > 1.32:
-            turned_edge(mesh, path, dest['hood'], body_surface.tree, .011, .0026)
-        elif abs(average.x) > .189:
-            turned_edge(mesh, path, dest['punos'], sleeve_surface.tree, .004, .00225)
         else:
-            turned_edge(mesh, path, dest['punos'], body_surface.tree, .037, .0031)
-    front = PanelSurface(mesh, {0})
-    for side in [-1, 1]:
-        pocket(dest['torso'], dest['bodyThread'], front, side)
-    for side, entry in zipper(dest['neckTape'], dest['zipMetal'], front):
-        cord = resting_cord(entry, side, front)
-        if len(cord) < 2:
-            continue
-        finish = cord[-1]
-        piping(dest['cord'], cord, .0020)
-        piping(dest['zipMetal'], [finish, finish + Vector((0., .0015, -.010))], .00176)
-    write_buffers(output, dest)
+            waist = path
+    if neck is None or waist is None or len(cuffs) != 2:
+        raise ValueError('Expected a neck, waistband, and two sleeve openings')
+    emit_panels(mesh,dest,('torso','torso','sleeve'),bands={
+        'torso': (sleeve_distance(mesh,[waist]),.041),
+        'sleeve': (sleeve_distance(mesh,cuffs),.044),
+    })
+    body_surface = PanelSurface(mesh,{0,1})
+    sleeve_surface = PanelSurface(mesh,{2})
+    for path in cuffs:
+        turned_edge(mesh,path,dest['punos'],sleeve_surface.tree,.0034,.0027)
+    turned_edge(mesh,waist,dest['punos'],body_surface.tree,.0042,.0032)
+    front = PanelSurface(mesh,{0})
+    turned_edge(mesh,neck,dest['hood'],body_surface.tree,.0052,.0018)
+    anchors = laid_hood(dest['hood'],dest['lining'],dest['hoodThread'],mesh,neck)
+    for side in [-1,1]:
+        pocket(dest['torso'],dest['bodyThread'],front,side)
+    zipper(dest['torso'],dest['punos'],dest['bodyThread'],dest['neckTape'],dest['zipMetal'],front)
+    for side, entry in anchors.items():
+        eyelet = [entry+Vector((.00345*math.cos(i*math.tau/25),-.004,.00345*math.sin(i*math.tau/25)))
+                  for i in range(26)]
+        piping(dest['zipMetal'],eyelet,.00085)
+        cord = resting_cord(entry,side,front)
+        end = cord[-1]
+        piping(dest['cord'],cord,.00215)
+        piping(dest['zipMetal'],[end,end+Vector((0.,.0008,-.0105))],.00176)
+    write_buffers(output,dest)
 
 
 def export_shorts(obj, output):
@@ -584,6 +854,8 @@ def main():
     shorts = args.kind == 'shorts'
     clean(obj, (lambda uv: int(uv.x > .5)) if shorts else hoodie_panel)
     clean(body, None, (.47, 1.11) if shorts else (.70, 1.56))
+    if not shorts:
+        remove_original_hood(obj)
     fit.subdivide(obj, 'Cut and sewn panels')
     add_uv(obj, args.kind)
     if shorts:
@@ -593,17 +865,18 @@ def main():
         prepare_shorts(obj)
         fit.drape(obj, body, 23, pin=lambda p: smoothstep(.876, .923, p.z), limit=.024)
     else:
-        prepare_hoodie(obj, body)
+        pose_hoodie_arms(obj, garment=True)
+        pose_hoodie_arms(body, garment=False)
         def support(p):
             shoulder = smoothstep(1.30, 1.375, p.z) * (1. - smoothstep(.142, .218, abs(p.x)))
             wrist = (1. - smoothstep(.89, .958, p.z)) * smoothstep(.175, .253, abs(p.x)) * .65
             return max(shoulder, wrist, smoothstep(1.34, 1.39, p.z))
-        fit.drape(obj, body, 20, pin=support, limit=.018, heavy=True)
+        fit.drape(obj, body, 24, pin=support, limit=.022, heavy=True)
     if not shorts:
         fit.subdivide(obj, 'Settled fleece')
-    sculpt(obj.data, args.kind)
     if not shorts:
-        settle_hood(obj.data)
+        settle_hoodie_seams(obj.data)
+    sculpt(obj.data, args.kind)
     (export_shorts if shorts else export_hoodie)(obj, args.output)
 
 
