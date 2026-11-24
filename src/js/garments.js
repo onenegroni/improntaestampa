@@ -228,7 +228,14 @@ export function torsoFn(o) {
     const tuck = o.tucked ? .013 * (crease(tuckPath, .014) - .76 * crease(tuckPath + .018, .019))
       + .0084 * side * crease(tuckPath - .043, .019) : 0;
     const hemRoll = .0015 * crease(v - .028, .015);
-    const off = (drape + armpit + (sideFold + lengthwise) * (heavy ? .72 : 1) + tuck) * wr + hemRoll;
+    const lowerEase = ease * sstep(.018, .082, v) * front ** 2;
+    const leftPull = yl + .275 - .42 * x + .78 * (x + .035) ** 2;
+    const rightPull = yl + .201 + .22 * x - 1.14 * (x - .054) ** 2;
+    const gather = lowerEase * (
+      (.0098 * crease(leftPull, .017) - .0061 * crease(leftPull + .020, .021)) * crease(x + .060, .091)
+      + (.0076 * crease(rightPull, .015) - .0055 * crease(rightPull - .020, .022)) * crease(x - .089, .082)
+    );
+    const off = (drape + armpit + (sideFold + lengthwise + gather) * (heavy ? .66 : 1) + tuck) * wr + hemRoll;
     const length = Math.hypot(x, z) || 1;
     x += x / length * off + .006 * hemWeight * wr;
     z += z / length * off + .0048 * hemWeight * s;
@@ -314,11 +321,14 @@ export function sleeve(side, hole, { long = false, sport = false } = {}) {
   for (let i = 0; i < 32; i++) rootCenter.add(new THREE.Vector3(...hole.at(i * TAU / 32)));
   rootCenter.multiplyScalar(1 / 32);
   const cut = long
-    ? [[.023, -.031, .004], [.039, -.103, .009], [.044, -.205, .021], [.041, -.310, .040], [.036, -.395, .053]]
+    ? [[.024, -.033, .002], [.041, -.115, .006], [.047, -.198, .019], [.045, -.296, .041], [.043, -.396, .061]]
     : sport
-      ? [[.023, -.024, .007], [.043, -.059, .009], [.062, -.100, .010], [.074, -.128, .012]]
-      : [[.021, -.024, .007], [.037, -.052, .009], [.053, -.087, .011], [.064, -.119, .014]];
-  const points = cut.map(([x, y, z]) => rootCenter.clone().add(new THREE.Vector3(x * side, y, z)));
+      ? [[.024, -.023, .007], [.045, -.056, .009], [.063, -.098, .013], [.074, -.126, .015]]
+      : [[.021, -.023, .005], [.039, -.050, .007], [.056, -.085, .012], [.064, -.113, .014]];
+  const points = cut.map(([x, y, z], i) => {
+    const motion = long ? (i + 1) / cut.length : .30;
+    return rootCenter.clone().add(new THREE.Vector3(x * side, y - .006 * motion * side, z + .008 * motion * side));
+  });
   const curve = new THREE.CatmullRomCurve3([rootCenter, ...points], false, 'centripetal');
   const frames = Array.from({length: 65}, (_, i) => {
     const v = i / 64;
@@ -341,38 +351,36 @@ export function sleeve(side, hole, { long = false, sport = false } = {}) {
     if (fraction === 1) return b;
     return { center: a.center.clone().lerp(b.center, fraction), front: a.front.clone().lerp(b.front, fraction), upper: a.upper.clone().lerp(b.upper, fraction) };
   }
-  const rootWidth = long ? .076 : .069, rootDepth = long ? .064 : .061;
-  const endWidth = long ? .041 : sport ? .052 : .049;
-  const endDepth = long ? .039 : sport ? .046 : .043;
+  // Measured across the MakeHuman shoulder, upper arm, elbow and wrist.
+  // Finished fabric allows ease at the biceps and follows the narrower forearm.
+  const widths = long
+    ? [[0,.074],[.16,.063],[.33,.054],[.47,.049],[.63,.049],[.79,.043],[1,.036]]
+    : [[0,.068],[.22,.059],[.56,.051],[1,sport ? .050 : .048]];
+  const depths = long
+    ? [[0,.070],[.16,.064],[.33,.059],[.47,.054],[.66,.050],[.83,.044],[1,.035]]
+    : [[0,.064],[.22,.059],[.56,.052],[1,sport ? .047 : .044]];
+  const rootWidth = widths[0][1], rootDepth = depths[0][1];
+  const endWidth = widths[widths.length - 1][1], endDepth = depths[depths.length - 1][1];
   const shell = (u, v) => {
     const angle = u * TAU;
     const frame = sleeveFrame(v);
-    const folds = sstep(.27, .44, v) * (1 - sstep(.89, 1, v));
-    const sideWeight = .25 + .75 * Math.pow(Math.abs(Math.cos(angle)), 1.8);
-    const pinch = (
-      Math.sin(v * (long ? 14 : 17) + 2.8 * Math.cos(angle) + side * .7) * .61
-      + Math.sin(v * 12 - 2.4 * Math.sin(angle)) * .25
-      + vnoise(v * 11, angle * 1.6) * .11
-    ) * folds * sideWeight;
-    const amplitude = long ? .0046 : .003;
-    const bend = Math.cos(angle + side * .45);
-    const elbow = long ? .0086 * (.62 + .38 * bend) * (
-      crease(v - .55 - .12 * bend + side * .031, .049)
-      - .71 * crease(v - .614 - .096 * bend + side * .021, .054)
-      + .44 * crease(v - .72 - .10 * bend - side * .013, .041)
-    ) : .0042 * (.3 + .7 * Math.max(0, bend)) * (
-      crease(v - .67 + .15 * bend, .086) - .54 * crease(v - .765 + .13 * bend, .088)
+    const free = sstep(.08, .24, v) * (1 - sstep(.87, 1, v));
+    const bend = Math.cos(angle - side * .57);
+    const fold = v - (long ? .50 : .57) + .112 * bend + .033 * side;
+    const crossFold = free * (.35 + .65 * Math.max(0, bend)) * (
+      .0050 * crease(fold, .051) - .0036 * crease(fold - .061, .050)
+      + .0028 * crease(fold - .139 - .022 * Math.sin(angle), .046)
     );
-    const gathers = (long ? .0018 : .0008) * crease(v - .89, .11) * (1 - sstep(.94, 1, v)) * Math.cos(angle * 5 + v * 10);
-    const finish = Math.pow(v, long ? 1.15 : .82);
-    const muscle = (long ? .0042 : .0044) * (crease(v - .35, .21) - crease(.35, .21) * (1 - v))
-      * (1 - sstep(.83, 1, v));
-    const width = lerp(rootWidth, endWidth, finish) + muscle + amplitude * pinch + elbow + gathers;
-    const depth = lerp(rootDepth, endDepth, finish) + muscle * 1.16 + amplitude * 1.4 * pinch + elbow * .56 + gathers;
+    const underarm = free * .0037 * crease(v - .21 - .095 * Math.sin(angle), .14)
+      * (1 - Math.sin(angle)) * .5;
+    const gathers = (long ? .0025 : .0012) * crease(v - .91, .077) * (1 - sstep(.945, 1, v))
+      * Math.cos(angle * 5 + v * 9 + side);
+    const width = prof(widths, v) + crossFold * .47 - underarm + gathers;
+    const depth = prof(depths, v) + crossFold - underarm * .36 + gathers;
     const root = hole.at(angle, 1.001);
     const sourceRing = outer(frames[0], angle, rootDepth, rootWidth);
     const currentRing = outer(frame, angle, depth, width);
-    const seamFit = 1 - sstep(0, long ? .39 : .68, v);
+    const seamFit = 1 - sstep(0, long ? .36 : .64, v);
     return currentRing.map((value, axis) => value + (root[axis] - sourceRing[axis]) * seamFit);
   };
   const finish = frames[64];
@@ -395,7 +403,7 @@ export function sleeve(side, hole, { long = false, sport = false } = {}) {
   return {
     shell: surface(96, 64, shell, {
       wrapU: true, uvFn: (u, v) => [orientation(u), 1 - v],
-      shade: (u, v) => 1 - (.055 + .10 * Math.max(0, -Math.sin(TAU * u))) * (1 - sstep(.06, .30, v)),
+      shade: (u, v) => 1 - (.036 + .087 * Math.max(0, -Math.sin(TAU * u))) * (1 - sstep(.03, .30, v)),
     }),
     trim: surface(96, 18, edge, {
       wrapU: true, uvFn: (u, v) => [orientation(u), v],
@@ -733,21 +741,22 @@ export function pocket(fn, side) {
   const uv = pocketUV(side);
   const panel = (s, t, offset = 0) => {
     const [u, v] = uv(s, t);
-    const raised = .0009 + .0034 * Math.pow(1 - s, 4) * Math.sin(Math.PI * t)
-      + .0028 * Math.sin(Math.PI * s) * Math.sin(Math.PI * t)
-      + .0015 * crease(s - .044, .032);
+    const tension = Math.sin(Math.PI * t);
+    const pouch = (.0064 + .0012 * Math.cos(t * Math.PI)) * Math.sin(Math.PI * s) ** 1.6 * tension;
+    const foldedEdge = .0029 * crease(s - .035, .027) * tension;
+    const raised = .0011 + .0031 * (1 - s) ** 4 * tension + pouch + foldedEdge;
     return liftFromAxis(fn(u, v), raised + offset);
   };
   const shell = surface(54, 36, panel, {
     uvFn: (s, t) => fn.uv(...uv(s, t)),
-    shade: (s, t) => 1 - .13 * crease(s - .021, .048) * Math.sin(Math.PI * t),
+    shade: (s, t) => 1 - .11 * crease(s - .019, .046) * Math.sin(Math.PI * t),
   });
   const edge = surface(60, 6, (t, v) => {
     const outside = panel(0, t), inside = fn(...uv(0, t));
     return outside.map((value, i) => lerp(value, inside[i], v));
   }, { uvFn: t => fn.uv(...uv(0, t)), shade: (t, v) => lerp(.92, .44, v) });
   const stitches = [
-    trace(45, t => panel(.064, .045 + .90 * t, .00070)),
+    trace(45, t => panel(.077, .045 + .90 * t, .00055)),
     trace(32, s => panel(s, .93, .00066)),
     trace(32, s => panel(s, .068, .00066)),
   ];

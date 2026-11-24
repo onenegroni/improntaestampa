@@ -416,15 +416,18 @@ function yarnTile(kind) {
   yarns.set(kind, tile);
   return tile;
 }
-export function applyWeave(canvas, kind, scale) {
+export function applyWeave(canvas, kind, scale, scan) {
   const context = canvas.getContext('2d');
+  const image = scan ? scan.image : yarnTile(kind);
+  const pitch = scale * (kind === 'fleece' ? 1.33 : 1);
+  const dx = scan ? canvas.width / (image.width * scan.repeat[0]) : pitch;
+  const dy = scan ? canvas.height / (image.height * scan.repeat[1]) : pitch;
   context.save();
   context.globalCompositeOperation = 'soft-light';
-  context.globalAlpha = kind === 'fleece' ? .50 : .39;
-  const pitch = scale * (kind === 'fleece' ? 1.33 : 1);
-  context.scale(pitch, pitch);
-  context.fillStyle = context.createPattern(yarnTile(kind), 'repeat');
-  context.fillRect(0, 0, canvas.width / pitch, canvas.height / pitch);
+  context.globalAlpha = scan ? (kind === 'fleece' ? .58 : .50) : (kind === 'fleece' ? .50 : .39);
+  context.scale(dx, dy);
+  context.fillStyle = context.createPattern(image, 'repeat');
+  context.fillRect(0, 0, canvas.width / dx, canvas.height / dy);
   context.restore();
 }
 export function fabricRoughness(kind, repeat) {
