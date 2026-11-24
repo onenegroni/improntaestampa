@@ -114,14 +114,17 @@ async function run(browser, mobile) {
 
     await page.locator('#nextStep').click();
     assert.equal(await activeStep(page), 'Pedido');
-    await page.locator('.sizes [data-v=TL]').click();
+    const garmentSizes = ['T4', 'T6', 'T8', 'T10', 'T12', 'T14', 'T16', 'S', 'M', 'L', 'XL', 'XXL'];
+    assert.deepEqual(await page.locator('.sizes button').allTextContents(), garmentSizes);
+    assert.deepEqual(await page.locator('#talles table:first-of-type tbody tr td:first-child').allTextContents(), garmentSizes);
+    await page.locator('.sizes [data-v=L]').click();
     await page.locator('#fCant').fill('18');
     const quote = new URL(await page.locator('#waBtn').getAttribute('href'));
     assert.equal(quote.origin + quote.pathname, 'https://wa.me/5492644127431');
     const message = quote.searchParams.get('text');
     assert.match(message, /JUANI/);
     assert.match(message, /Número: 10/);
-    assert.match(message, /Talle: TL/);
+    assert.match(message, /Talle: L\n/);
     assert.match(message, /Mangas: #3690A3/);
     assert.match(message, /3\) #F2C230/);
     assert.match(message, /Cantidad aprox\.: 18/);
@@ -129,6 +132,7 @@ async function run(browser, mobile) {
     const fragment = message.match(/(#[\w=-]+)\nDetalles extra/)[1];
     const shared = JSON.parse(Buffer.from(fragment.slice(3), 'base64url').toString());
     assert.equal(shared.cantidad, '18', 'Quote link uses the latest change');
+    assert.equal(shared.talle, 'L');
     assert.ok(!('logoImg' in shared), 'Uploaded logo stays on the device');
 
     console.log('  Text, upload, and quote passed');
@@ -198,6 +202,7 @@ async function run(browser, mobile) {
     const legacyKit = JSON.parse(Buffer.from(kitFragment.slice(3), 'base64url').toString());
     assert.equal(legacyKit.colors.short, '#3690a3');
     delete legacyKit.colors.short;
+    legacyKit.talle = 'TXXL';
 
     const sharedPage = await context.newPage();
     await sharedPage.goto(base + fragment);
@@ -210,6 +215,7 @@ async function run(browser, mobile) {
     await legacyPage.goto(base + '#d=' + Buffer.from(JSON.stringify(legacyKit)).toString('base64url'));
     const legacyQuote = new URL(await legacyPage.locator('#waBtn').getAttribute('href')).searchParams.get('text');
     assert.match(legacyQuote, /Short: #F2EFE9/);
+    assert.match(legacyQuote, /Talle: XXL\n/);
     assert.deepEqual(errors, []);
     console.log(`PASS ${mobile ? 'mobile' : 'desktop'}: six products, fabric, kit color zones, patterns, text, logo, quote, shared and legacy designs, four PNGs and ZIP`);
   } finally {

@@ -5,7 +5,7 @@ const WA = '5492644127431';
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const PALETTE = [['#141414', 'Negro'], ['#f2efe9', 'Blanco'], ['#6b6b6b', 'Gris'], ['#b5141a', 'Rojo Impronta'], ['#e8742a', 'Naranja'], ['#f2c230', 'Amarillo'], ['#8fd3cf', 'Aqua'], ['#9fc8e8', 'Celeste'], ['#1e2f5c', 'Azul marino'], ['#5b2a86', 'Violeta']];
 const cname = h => (PALETTE.find(p => p[0] === h) || [0, h])[1];
-const SIZES = ['T4', 'T6', 'T8', 'T10', 'T12', 'T14', 'T16', 'TS', 'TM', 'TL', 'TXL', 'TXXL'];
+const SIZES = ['T4', 'T6', 'T8', 'T10', 'T12', 'T14', 'T16', 'S', 'M', 'L', 'XL', 'XXL'];
 const TELAS = { deportiva: ['Deportiva', 'Liviana, seca rápido'], modal: ['Modal', 'Suave, más caída'], frizado: ['Acrílico frizado', 'Abriga, interior suave'] };
 const PRESETS_P = { galactico: 'Galáctico', splash: 'Splash', degrade: 'Degradé', rayas: 'Rayas', tiedye: 'Tie-dye', manitos: 'Manitos', camuflaje: 'Camuflaje', geometrico: 'Geométrico', liso: 'Liso' };
 const PCOL = ['acento', 'acento2', 'acento3'];
@@ -18,7 +18,7 @@ const P = {
   gorra: { label: 'Gorra', crumb: 'Gorra trucker', telas: [], fixed: 'Gabardina + frente sublimado', zones: { cuerpo: 'Copa', mangas: 'Visera', capucha: null, punos: 'Botón y vivos' }, sizes: ['Único ajustable'], frase: '' },
 };
 const ZONES = ['cuerpo', 'short', 'mangas', 'capucha', 'punos'];
-const DEFAULT = { producto: 'remera', tela: 'deportiva', colors: { cuerpo: '#141414', short: '#141414', mangas: '#b5141a', capucha: '#141414', punos: '#f2efe9', acento: '#b5141a', acento2: '#f4f1ec', acento3: '#7a0d12' }, preset: 'splash', printAll: false, nombre: 'MELI', numero: '26', espalda: 'PROMO 26', escuela: 'ESCUELA SARMIENTO', frase: 'Más que una remera, un recuerdo para siempre', talle: 'TM', cantidad: '30' };
+const DEFAULT = { producto: 'remera', tela: 'deportiva', colors: { cuerpo: '#141414', short: '#141414', mangas: '#b5141a', capucha: '#141414', punos: '#f2efe9', acento: '#b5141a', acento2: '#f4f1ec', acento3: '#7a0d12' }, preset: 'splash', printAll: false, nombre: 'MELI', numero: '26', espalda: 'PROMO 26', escuela: 'ESCUELA SARMIENTO', frase: 'Más que una remera, un recuerdo para siempre', talle: 'M', cantidad: '30' };
 const PRESETS = {
   promo26: {},
   galaxia: { producto: 'campera', tela: 'frizado', colors: { cuerpo: '#141414', mangas: '#141414', capucha: '#141414', punos: '#141414', acento: '#9fc8e8', acento2: '#6a2fa6', acento3: '#1f6fd1' }, preset: 'galactico', printAll: true, frase: 'Más que una campera, un recuerdo para siempre' },
@@ -44,6 +44,7 @@ if (openedDesign) {
     for (const [key, limit] of Object.entries({ nombre: 14, numero: 3, espalda: 18, escuela: 32, frase: 48, talle: 24, cantidad: 4 })) {
       if (typeof data[key] === 'string') state[key] = data[key].slice(0, limit);
     }
+    if (/^T(?:S|M|L|XL|XXL)$/.test(state.talle)) state.talle = state.talle.slice(1);
     state.printAll = data.printAll === true;
   } catch (error) { /* A malformed link opens the default design. */ }
 }
