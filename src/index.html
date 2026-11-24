@@ -60,55 +60,43 @@
 </section>
 
 <section class="config" id="configurador" aria-labelledby="cfgTitle">
- <div class="wrap shead center"><p class="kicker rv">Diseñador 3D</p><h2 id="cfgTitle" class="split"><span class="ln"><span>Diseñalo vos.</span></span><span class="ln"><span class="dim">Miralo antes de que exista.</span></span></h2>
- <p class="sub rv d1">Elegí prenda, tela, colores y estampado. Girala 360° y mandanos el render por WhatsApp.</p></div>
+ <div class="wrap studio-intro">
+  <p class="studio-kicker"><span></span> Diseñador 3D</p>
+  <h2 id="cfgTitle">Tu diseño, <em>en 3D</em></h2>
+  <p>Elegí un producto y hacelo tuyo. Mirá cada cambio en tiempo real.</p>
+ </div>
  <div class="wrap mteaser">
-  <button class="mt-card" id="openDz" type="button" aria-label="Abrir el diseñador 3D a pantalla completa"><img src="img/poster.webp" width="1736" height="1600" alt="" loading="lazy"><span class="mt-cta"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3zM12 12l8-4.5M12 12v9M12 12L4 7.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>Diseñar en 3D</span></button>
-  <p class="mt-note">¿Tenés una idea más específica? Elegí el modelo y los colores más parecidos y contanos los detalles al pedir presupuesto.</p>
+  <button class="mt-card" id="openDz" type="button"><img src="img/studio-poster.webp" width="820" height="820" alt="" loading="lazy"><span class="mt-cta">Empezar a diseñar</span></button>
  </div>
  <div class="wrap cfgw"><div class="cfg" id="cfg">
-  <div class="dz-head"><b>Diseñador 3D</b><button class="dz-x" id="closeDz" type="button" aria-label="Cerrar diseñador"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></div>
+  <div class="dz-head"><b>Estudio de diseño</b><button class="dz-x" id="closeDz" type="button" aria-label="Cerrar diseñador"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>
   <div class="viewer" id="viewer" aria-busy="true">
-   <img class="poster" id="poster" src="img/poster.webp" width="1600" height="1600" alt="" aria-hidden="true" loading="lazy" decoding="async">
-   <div class="gl" id="gl" aria-label="Vista 3D de la prenda. Arrastrá para girar, rueda o pellizco para zoom." role="img"></div>
-   <div class="flash" id="flash"></div>
-   <div class="loader" id="loader" role="status"><span class="mono">Cargando estudio 3D</span><span class="bar"><i></i></span></div>
-   <div class="vtop"><div class="crumb mono" aria-live="polite"><b id="crumbT">Remera egresados</b><span id="crumbS">Tela deportiva · Talle TM</span></div>
-    <div class="seg" id="seg" role="group" aria-label="Vistas"><span class="pill"></span><button data-yaw="0">Frente</button><button data-yaw="3.1416">Espalda</button><button data-yaw="-1.5708">Perfil</button><button data-yaw="-0.6" class="on">3/4</button></div></div>
-   <div class="vtools">
-    <button id="zIn" aria-label="Acercar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 5v14M5 12h14"/></svg></button>
-    <button id="zOut" aria-label="Alejar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 12h14"/></svg></button>
-    <button id="autoBtn" class="hide-m" aria-label="Giro automático" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v4h-4"/></svg></button>
-    <button id="resetBtn" class="hide-m" aria-label="Restablecer vista"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 9V4h5M20 15v5h-5M4 4l6 6M20 20l-6-6"/></svg></button>
+   <img class="poster" id="poster" src="img/studio-poster.webp" width="820" height="820" alt="" aria-hidden="true" loading="lazy" decoding="async">
+   <div class="gl" id="gl" aria-label="Vista 3D. Arrastrá para girar o usá los botones de vista y zoom." role="img"></div>
+   <div class="loader" id="loader" role="status"><span>Cargando vista 3D</span><span class="bar"><i></i></span></div>
+   <div class="vtop"><div class="crumb"><b id="crumbT">Remera</b><span id="crumbS">Tela deportiva · Talle TM</span></div><span class="view-status"><i></i> Vista en vivo</span></div>
+   <div class="vtools" role="group" aria-label="Controles de la vista 3D">
+    <button type="button" id="zIn" title="Acercar" aria-label="Acercar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 5v14M5 12h14"/></svg></button>
+    <button type="button" id="zOut" title="Alejar" aria-label="Alejar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 12h14"/></svg></button>
+    <button type="button" id="autoBtn" title="Giro automático" aria-label="Giro automático" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v4h-4"/></svg></button>
+    <button type="button" id="resetBtn" title="Restablecer vista" aria-label="Restablecer vista"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 4H4v4m12-4h4v4M4 16v4h4m12-4v4h-4"/></svg></button>
    </div>
-   <div class="rot" aria-hidden="true"><svg viewBox="0 0 220 30" fill="none" stroke="#3b3833" stroke-width="1.2"><path d="M14 8 C 60 30, 160 30, 206 8"/><path d="M200 4 l7 4 -6 5"/><path d="M20 4 l-7 4 6 5"/><circle class="dotm" id="rotDot" cx="110" cy="23" r="3.4" fill="#c8161d" stroke="none"/></svg><span class="mono">360° · Arrastrá para girar</span></div>
-   <div class="vfoot mono"><span class="dot"></span>Vista en tiempo real<br>Luz de estudio</div>
-   <div class="vfoot2 mono" id="vinfo">Rotación 0°<br>Zoom 100%</div>
-  </div>
-  <div class="renders" id="renders">
-   <div class="info"><div><b>Render del diseño</b><p>4 ángulos en alta resolución, con luz de estudio y la tela elegida. Adjuntalos en WhatsApp.</p></div>
-    <div class="acts"><button id="dlZip" disabled>Descargar ZIP ↓</button><button id="openLb" disabled>Ver en grande ↗</button></div></div>
-   <button class="rth" data-i="0" aria-label="Render frente"><div class="sk"><svg><use href="#shirt"/></svg></div><img alt=""><span>Frente</span></button>
-   <button class="rth" data-i="1" aria-label="Render espalda"><div class="sk"><svg><use href="#shirt"/></svg></div><img alt=""><span>Espalda</span></button>
-   <button class="rth" data-i="2" aria-label="Render perfil"><div class="sk"><svg><use href="#shirt"/></svg></div><img alt=""><span>Perfil</span></button>
-   <button class="rth" data-i="3" aria-label="Render 3/4"><div class="sk"><svg><use href="#shirt"/></svg></div><img alt=""><span>3/4</span></button>
+   <div class="view-bottom">
+    <div class="seg" id="seg" role="group" aria-label="Ángulos de vista"><button type="button" data-yaw="0" aria-pressed="false">Frente</button><button type="button" data-yaw="3.141592653589793" aria-pressed="false">Espalda</button><button type="button" data-yaw="-1.5707963267948966" aria-pressed="false">Perfil</button><button type="button" data-yaw="-0.6" aria-pressed="true">3/4</button></div>
+    <span class="view-hint">Arrastrá para girar · Tocá el producto para cambiar su color</span>
+   </div>
   </div>
   <aside class="panel" aria-label="Opciones de diseño">
-   <div class="sheet-grab" aria-hidden="true"></div>
-   <div class="ph"><b>Tu diseño</b><span class="mono" id="stepInfo">6 pasos</span></div>
-   <div class="mtabs" id="mtabs" role="tablist" aria-label="Secciones del diseño"><span class="ink"></span></div>
+   <header class="studio-panel-head"><h3>Personalizá tu diseño</h3><p id="stepInfo">Paso 1 de 4</p></header>
+   <div class="mtabs" id="mtabs" role="tablist" aria-label="Pasos del diseño"></div>
    <div class="groups" id="groups"></div>
    <div class="pf">
-    <div class="sum"><span id="sumL">Remera · Deportiva · Splash</span><b id="sumR">Talle TM</b></div>
-    <div class="row"><button class="btn btn-ghost" id="renderBtn"><span class="spin"></span>Generar render</button><button class="btn btn-ghost" id="dlBtn" disabled>Descargar ↓</button></div>
-    <p class="idea"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-3.6 10.8c.6.5 1 1.2 1 2V16h5.2v-.2c0-.8.4-1.5 1-2A6 6 0 0012 3z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>¿Tenés una idea más específica? Elegí el modelo y los colores más parecidos y contanos los detalles al pedir presupuesto.</span></p>
-    <a class="btn btn-red" id="waBtn" href="#" target="_blank" rel="noopener"><svg class="wa" aria-hidden="true"><use href="#wa"/></svg>Pedir presupuesto</a>
+    <button type="button" class="studio-back" id="prevStep" disabled>Atrás</button>
+    <button type="button" class="btn btn-red" id="nextStep">Continuar</button>
+    <a class="btn btn-red" id="waBtn" href="#" target="_blank" rel="noopener" hidden><svg class="wa" aria-hidden="true"><use href="#wa"/></svg>Pedir presupuesto</a>
    </div>
   </aside>
- </div>
- <div class="cta-band rv"><p>¿Te gusta cómo quedó?<small>Descargá los renders y mandanos tu diseño: te respondemos con el presupuesto por WhatsApp.</small></p>
-  <div class="btns"><button class="btn btn-ghost" id="renderBtn2">Generar y descargar renders</button><a class="btn btn-red" id="waBtn2" href="#" target="_blank" rel="noopener"><svg class="wa" aria-hidden="true"><use href="#wa"/></svg>Pedir presupuesto</a></div></div>
- </div>
+ </div></div>
 </section>
 
 <section class="prod" id="productos" aria-labelledby="prodT">

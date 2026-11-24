@@ -1,77 +1,179 @@
-// Functional test: node test.js  (desktop + mobile)
-const {chromium}=require('playwright');const fs=require('fs');
-const ok=(c,m)=>{if(!c)throw new Error('FAIL: '+m);console.log('  ✓',m)};
-async function run(name,ctxOpts,mobile){
- console.log('== '+name);
- const b=await chromium.launch({executablePath:'/usr/bin/google-chrome',args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
- const ctx=await b.newContext({...ctxOpts,acceptDownloads:true});const p=await ctx.newPage();
- const errs=[];p.on('console',m=>{if(m.type()==='error')errs.push(m.text())});p.on('pageerror',e=>errs.push('pageerror '+e.message));
- p.on('response',r=>{if(r.status()>=400)errs.push(r.status()+' '+r.url())});
- await p.goto((process.env.BASE||'http://localhost:8080/')+(process.env.Q||''),{waitUntil:'networkidle'});
- ok(await p.evaluate(()=>scrollY)===0,'page stays at top on load');
- await p.addStyleTag({content:'html{scroll-behavior:auto!important}'});
- await p.evaluate(()=>document.querySelector('#configurador').scrollIntoView());
- if(mobile){await p.waitForTimeout(300);await p.tap('#openDz');await p.waitForTimeout(300);ok(await p.evaluate(()=>document.body.classList.contains('dz')),'mobile: Diseñar en 3D opens the full-screen designer');}
- await p.waitForFunction(()=>document.getElementById('viewer').classList.contains('ready'),null,{timeout:60000});
- ok(true,'3D configurator lazy-loaded');
- const clk=async sel=>{await p.evaluate(s=>{const e=document.querySelector(s.split(',')[0]);e&&e.scrollIntoView({block:'center'})},sel);await p.waitForTimeout(150);await p.click(sel)};
- const tab=async g=>{if(mobile){await clk('#tab-'+g);await p.waitForTimeout(250);}};
- const st=()=>p.evaluate(()=>JSON.parse(JSON.stringify(window.__impronta.state,(k,v)=>k==='logoImg'?undefined:v)));
- await tab('producto');
- for(const k of ['campera','conjunto','musculosa','bandera','gorra','remera']){await clk(`#grp-producto .chip[data-v=${k}]`);await p.waitForTimeout(900);ok((await st()).producto===k,'product '+k);}
- await tab('tela');await clk('#grp-tela .fab button[data-v=modal]');ok((await st()).tela==='modal','tela modal');
- await tab('colores');await clk('.zp[data-z=cuerpo]');await p.waitForTimeout(300);ok(await p.evaluate(()=>!document.querySelector('#slotZone .cw').hidden),'zone pill opens colour wheel');
- await clk('#slotZone .cw-rec button:nth-child(5)');await p.waitForTimeout(400);
- const s1=await st();ok(s1.colors.cuerpo!=='#141414','cuerpo color changed via recent swatch → '+s1.colors.cuerpo);
- await p.fill('#slotZone .cw-hex','#1E2F5C');await p.press('#slotZone .cw-hex','Enter');await p.waitForTimeout(300);ok((await st()).colors.cuerpo==='#1e2f5c','hex input sets colour');
- // tap a sleeve on the 3D product -> selects the Mangas zone (tap = movement < 6px)
- await p.evaluate(()=>{document.querySelector('#viewer').scrollIntoView({block:'center'});const v=window.__impronta.api.view;v.auto=false;v.lastInteract=performance.now()+1e9;});await p.waitForTimeout(900);
- const pt=await p.evaluate(()=>window.__impronta.api.zoneScreenPoint('mangas'));ok(!!pt,'sleeve located on screen');
- if(mobile)await p.touchscreen.tap(pt.x,pt.y);else await p.mouse.click(pt.x,pt.y);await p.waitForTimeout(500);
- ok(await p.evaluate(()=>document.querySelector('.zp[aria-checked=true]')?.dataset.z==='mangas'&&!document.querySelector('.cw').hidden),'tapping sleeve selects Mangas + opens wheel');
- const wb=await p.evaluate(()=>{const e=document.querySelector('.cw-wheel');e.scrollIntoView({block:'center'});const r=e.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height}});await p.waitForTimeout(200);
- const m0=(await st()).colors.mangas;await p.mouse.move(wb.x+wb.w*.5,wb.y+wb.h*.5);await p.mouse.down();await p.mouse.move(wb.x+wb.w*.2,wb.y+wb.h*.7,{steps:5});await p.mouse.up();await p.waitForTimeout(400);
- ok((await st()).colors.mangas!==m0,'dragging the wheel changes sleeve colour → '+(await st()).colors.mangas);
- await clk('#slotZone .cw-x');ok(await p.evaluate(()=>document.querySelector('.cw').hidden),'wheel closes');
- // drag-rotate must not select a zone
- const g=await p.evaluate(()=>{const e=document.querySelector('#gl canvas');e.scrollIntoView({block:'center'});const r=e.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height}});await p.waitForTimeout(200);
- if(!mobile){await p.mouse.move(g.x+g.w*.45,g.y+g.h*.45);await p.mouse.down();await p.mouse.move(g.x+g.w*.65,g.y+g.h*.45,{steps:8});await p.mouse.up();await p.waitForTimeout(300);ok(await p.evaluate(()=>document.querySelector('.cw').hidden),'drag-to-rotate does not open the wheel');}
- await tab('estampa');await clk('#grp-estampa .prints button[data-v=galactico]');await p.waitForTimeout(800);ok((await st()).preset==='galactico','pattern galáctico');
- for(const k of ['tiedye','manitos','camuflaje','geometrico']){await clk(`#grp-estampa .prints button[data-v=${k}]`);await p.waitForTimeout(700);ok((await st()).preset===k,'pattern '+k);}
- await clk('#pcols .pc[data-i="2"]');await p.waitForTimeout(300);ok(await p.evaluate(()=>!document.querySelector('#slotPrint .cw').hidden),'print colour 3 opens wheel');
- await p.fill('#slotPrint .cw-hex','#F2C230');await p.press('#slotPrint .cw-hex','Enter');await p.waitForTimeout(300);ok((await st()).colors.acento3==='#f2c230','print colour 3 set');
- await clk('#grp-estampa .prints button[data-v=galactico]');await p.waitForTimeout(800);
- await tab('texto');await p.fill('#fNombre','');await p.type('#fNombre','JUANI');await p.fill('#fNum','10');await p.waitForTimeout(500);
- const s2=await st();ok(s2.nombre==='JUANI'&&s2.numero==='10','name/number typed');
- await tab('logo');ok(await p.evaluate(()=>document.querySelector('#drop .dt').textContent.includes('Subí el logo de la escuela')),'logo copy says "de la escuela"');
- await p.setInputFiles('#fLogo','site/img/mark.svg');await p.waitForTimeout(800);
- ok(await p.evaluate(()=>!!window.__impronta.state.logoImg),'logo uploaded');
- await tab('talle');await clk('#grp-talle .sizes button[data-v=TL]');ok((await st()).talle==='TL','talle TL');
- const href=await p.getAttribute('#waBtn','href');const msg=decodeURIComponent(href.split('text=')[1]||'');
- ok(href.startsWith('https://wa.me/5492644127431'),'WA link number');ok(/JUANI/.test(msg)&&/TL/.test(msg)&&/Gal/i.test(msg),'WA message contains design summary');ok(/Mangas: #[0-9A-F]{6}/.test(msg)&&/Colores del estampado: 1\) #[0-9A-F]{6}.*2\) #[0-9A-F]{6}.*3\) #F2C230/.test(msg),'WA lists zone hex + 3 print colours');
- ok((await p.textContent('#waBtn')).includes('Pedir presupuesto'),'CTA reads "Pedir presupuesto"');
- // render
- await clk('#renderBtn');await p.waitForFunction(()=>document.querySelectorAll('.rth.has').length===4,null,{timeout:120000});ok(true,'4 renders generated');
- const sizes=await p.evaluate(()=>[...document.querySelectorAll('.rth img')].map(i=>i.naturalWidth+'x'+i.naturalHeight));console.log('   render sizes',sizes.join(' '));
- if(mobile){await p.waitForSelector('#lb.open',{timeout:8000});ok(true,'mobile: lightbox opens automatically after render');await p.keyboard.press('Escape');await p.waitForTimeout(500);ok(!(await p.$('#lb.open')),'lightbox closes (Esc)');ok(await p.evaluate(()=>document.body.classList.contains('dz')),'designer still open after closing lightbox');await p.tap('#closeDz');await p.waitForTimeout(500);ok(await p.evaluate(()=>!document.body.classList.contains('dz')),'X closes designer');}
- else{const [dl]=await Promise.all([p.waitForEvent('download',{timeout:30000}),clk('#dlBtn')]);const fp='/tmp/test_'+name+'.zip';await dl.saveAs(fp);
- const zb=fs.readFileSync(fp);ok(zb.slice(0,2).toString()==='PK'&&zb.length>100000,'zip downloaded '+dl.suggestedFilename()+' '+(zb.length/1024|0)+'KB');
- await p.click('.rth.has >> nth=1');await p.waitForSelector('#lb.open,#lb[open],.lb.open',{timeout:5000});ok(true,'lightbox opens');
- if(!mobile){await p.keyboard.press('ArrowRight');await p.waitForTimeout(300);}
- await p.keyboard.press('Escape');await p.waitForTimeout(500);ok(!(await p.$('#lb.open')),'lightbox closes (Esc)');}
- // gallery preset
- await p.evaluate(()=>document.querySelector('#trabajos').scrollIntoView());await p.waitForTimeout(600);
- await p.click('#filters button[data-f="3d"]');await p.waitForTimeout(600);const vis=await p.$$eval('#grid .card',cs=>cs.filter(c=>c.offsetParent).length);ok(vis>=4,'filter 3D shows '+vis+' cards');
- await p.click('#grid [data-preset=seleccion]');await p.waitForTimeout(2500);const s3=await st();ok(s3.producto==='conjunto'&&s3.preset==='rayas','gallery preset loads into configurator');
- ok(await p.evaluate(()=>{const r=document.querySelector('#configurador .viewer').getBoundingClientRect();return r.top<innerHeight&&r.bottom>0}),'designer visible after picking a gallery design');
- if(mobile){ok(await p.evaluate(()=>document.body.classList.contains('dz')),'mobile: gallery design opens full-screen designer');await p.tap('#closeDz');await p.waitForTimeout(500);}
- // menu (mobile)
- if(mobile){await p.click('#menuBtn');await p.waitForTimeout(500);ok(await p.evaluate(()=>document.querySelector('#menu').classList.contains('open')||document.body.classList.contains('menu-open')),'mobile menu opens');await p.keyboard.press('Escape');}
- ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'no horizontal overflow');
- ok(errs.length===0,'no console errors'+(errs.length?': '+errs.join(' | '):''));
- await b.close();
+// Run with the built site served at BASE (defaults to http://127.0.0.1:8080/).
+const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const { chromium } = require('playwright');
+
+const base = process.env.BASE || 'http://127.0.0.1:8080/';
+const launchOptions = {
+  ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : { channel: 'chrome' }),
+  args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+};
+const waitForStudio = page => page.waitForFunction(() => window.__impronta?.api, null, { timeout: 25000 });
+const activeStep = page => page.locator('#mtabs [aria-selected=true]').textContent();
+const studioState = (page, path) => page.evaluate(keys => keys.split('.').reduce((value, key) => value[key], window.__impronta.state), path);
+
+async function run(browser, mobile) {
+  const viewport = mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 };
+  const context = await browser.newContext({ viewport, isMobile: mobile, hasTouch: mobile, reducedMotion: 'reduce', acceptDownloads: true });
+  const page = await context.newPage();
+  page.setDefaultTimeout(18000);
+  const errors = [];
+  page.on('pageerror', err => errors.push(err.message));
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+  page.on('response', response => { if (response.status() >= 400) errors.push(String(response.status()) + ' ' + response.url()); });
+  try {
+    await page.goto(base);
+    assert.equal(await page.evaluate(() => scrollY), 0);
+    await page.locator('#configurador').scrollIntoViewIfNeeded();
+    if (mobile) {
+      await page.locator('#openDz').click();
+      assert.equal(await page.getByRole('dialog', { name: 'Estudio de diseño' }).isVisible(), true);
+    }
+    await waitForStudio(page);
+    assert.equal(await activeStep(page), 'Modelo');
+    assert.equal(await page.locator('#autoBtn').getAttribute('aria-pressed'), 'false');
+
+    for (const product of ['campera', 'conjunto', 'musculosa', 'bandera', 'gorra', 'remera']) {
+      await page.locator(`.chip[data-v=${product}]`).click();
+      assert.equal(await studioState(page, 'producto'), product);
+      if (product === 'bandera') assert.equal(await page.locator('#fixedFabric').textContent(), 'Poliéster sublimable');
+    }
+    await page.locator('.fab [data-v=modal]').click();
+    assert.equal(await studioState(page, 'tela'), 'modal');
+
+    if (!mobile && process.env.POSTER_OUT) {
+      await page.locator('.fab [data-v=deportiva]').click();
+      const url = await page.evaluate(async () => (await window.__impronta.api.renderSet({
+        w: 1100, h: 1100, angles: [['3-4', -0.48]], transparent: true, pitch: .075, zoom: .92,
+      }))[0].url);
+      await fs.writeFile(process.env.POSTER_OUT, Buffer.from(url.split(',')[1], 'base64'));
+    }
+
+    console.log('  Product and fabric controls passed');
+    // The canvas can open the right color section directly. A normal drag only rotates.
+    await page.locator('#viewer').scrollIntoViewIfNeeded();
+    const sleeve = await page.evaluate(() => window.__impronta.api.zoneScreenPoint('mangas'));
+    assert.ok(sleeve, 'Sleeve appears in the viewport');
+    if (mobile) await page.touchscreen.tap(sleeve.x, sleeve.y);
+    else await page.mouse.click(sleeve.x, sleeve.y);
+    await page.waitForFunction(() => document.querySelector('.zp[data-z=mangas]').getAttribute('aria-pressed') === 'true');
+    assert.equal(await activeStep(page), 'Color');
+    await page.getByRole('button', { name: 'Azul marino', exact: true }).click();
+    assert.equal(await studioState(page, 'colors.mangas'), '#1e2f5c');
+    await page.locator('#editColor').click();
+    await page.locator('#slotZone .cw-hex').fill('#3690A3');
+    await page.locator('#slotZone .cw-hex').press('Enter');
+    assert.equal(await studioState(page, 'colors.mangas'), '#3690a3');
+    await page.locator('#slotZone .cw-x').click();
+    assert.equal(await page.locator('#slotZone .cw').isHidden(), true);
+
+    if (!mobile) {
+      const model = await page.locator('#gl canvas').boundingBox();
+      await page.mouse.move(model.x + model.width * .45, model.y + model.height * .36);
+      await page.mouse.down();
+      await page.mouse.move(model.x + model.width * .61, model.y + model.height * .36, { steps: 6 });
+      await page.mouse.up();
+      assert.equal(await page.locator('#slotZone .cw').isHidden(), true);
+    }
+
+    for (const print of ['galactico', 'tiedye', 'manitos', 'camuflaje', 'geometrico', 'liso', 'rayas']) {
+      await page.locator(`.prints [data-v=${print}]`).click();
+      assert.equal(await studioState(page, 'preset'), print);
+      if (print === 'liso') assert.equal(await page.locator('#pcols').isHidden(), true);
+    }
+    await page.locator('#pcols .pc[data-i="2"]').click();
+    await page.locator('#slotPrint .cw-hex').fill('#F2C230');
+    await page.locator('#slotPrint .cw-hex').press('Enter');
+    assert.equal(await studioState(page, 'colors.acento3'), '#f2c230');
+    await page.locator('#slotPrint .cw-x').click();
+    console.log('  Zone and pattern controls passed');
+    await page.locator('#nextStep').click();
+    assert.equal(await activeStep(page), 'Detalles');
+
+    await page.locator('#clearText').click();
+    assert.equal(await page.locator('#fNombre').inputValue(), '');
+    await page.locator('#fNombre').fill('JUANI');
+    await page.locator('#fNum').fill('10x');
+    assert.equal(await studioState(page, 'numero'), '10');
+    await page.waitForFunction(() => document.querySelector('#seg button:nth-child(2)').getAttribute('aria-pressed') === 'true');
+    await page.locator('#fLogo').setInputFiles('site/img/mark.svg');
+    await page.waitForFunction(() => Boolean(window.__impronta.state.logoImg));
+    assert.equal(await page.locator('#logoLabel').textContent(), 'mark.svg');
+    await page.locator('#removeLogo').click();
+    assert.equal(await studioState(page, 'logoImg'), null);
+    await page.locator('#fLogo').setInputFiles('site/img/mark.svg');
+    await page.waitForFunction(() => Boolean(window.__impronta.state.logoImg));
+
+    await page.locator('#nextStep').click();
+    assert.equal(await activeStep(page), 'Pedido');
+    await page.locator('.sizes [data-v=TL]').click();
+    await page.locator('#fCant').fill('18');
+    const quote = new URL(await page.locator('#waBtn').getAttribute('href'));
+    assert.equal(quote.origin + quote.pathname, 'https://wa.me/5492644127431');
+    const message = quote.searchParams.get('text');
+    assert.match(message, /JUANI/);
+    assert.match(message, /Número: 10/);
+    assert.match(message, /Talle: TL/);
+    assert.match(message, /Mangas: #3690A3/);
+    assert.match(message, /3\) #F2C230/);
+    assert.match(message, /Cantidad aprox\.: 18/);
+    assert.match(message, /Logo: lo adjunto/);
+    const fragment = message.match(/(#[\w=-]+)\nDetalles extra/)[1];
+    const shared = JSON.parse(Buffer.from(fragment.slice(3), 'base64url').toString());
+    assert.equal(shared.cantidad, '18', 'Quote link uses the latest change');
+    assert.ok(!('logoImg' in shared), 'Uploaded logo stays on the device');
+
+    console.log('  Text, upload, and quote passed');
+    await page.locator('#renderBtn').click();
+    await page.waitForSelector('#lb.open', { timeout: 90000 });
+    assert.equal(await page.locator('#lbS button').count(), 4);
+    await page.locator('#lbS button').nth(1).click();
+    assert.equal(await page.locator('#lbT').textContent(), 'Espalda');
+    await page.waitForFunction(() => document.getElementById('lbImg').naturalWidth >= 1080);
+    const downloadEvent = page.waitForEvent('download');
+    await page.locator('#lbZip').click();
+    const download = await downloadEvent;
+    const archive = await fs.readFile(await download.path());
+    assert.equal(archive.subarray(0, 2).toString(), 'PK');
+    assert.ok(archive.length > 100000);
+    assert.ok(archive.includes(Buffer.from('impronta-remera-juani-3-4.png')));
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#lb').evaluate(element => element.classList.contains('open')), false);
+
+    if (mobile) {
+      await page.locator('#closeDz').click();
+      await page.waitForFunction(() => !document.body.classList.contains('dz'));
+    }
+    await page.locator('#filters [data-f="3d"]').click();
+    await page.locator('#grid [data-preset=seleccion]').click();
+    assert.equal(await studioState(page, 'producto'), 'conjunto');
+    assert.equal(await studioState(page, 'preset'), 'rayas');
+    assert.equal(await activeStep(page), 'Color');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+
+    const sharedPage = await context.newPage();
+    await sharedPage.goto(base + fragment);
+    if (mobile) await sharedPage.getByRole('dialog', { name: 'Estudio de diseño' }).waitFor();
+    await waitForStudio(sharedPage);
+    assert.equal(await studioState(sharedPage, 'nombre'), 'JUANI');
+    assert.equal(await studioState(sharedPage, 'cantidad'), '18');
+    assert.equal(await studioState(sharedPage, 'logoImg'), null);
+    assert.deepEqual(errors, []);
+    console.log(`PASS ${mobile ? 'mobile' : 'desktop'}: six products, fabric, direct color picking, custom colors, patterns, text, logo, quote, shared design, four PNGs and ZIP`);
+  } finally {
+    await context.close();
+  }
 }
-(async()=>{try{
- await run('desktop',{viewport:{width:1440,height:900}},false);
- await run('mobile',{viewport:{width:390,height:844},deviceScaleFactor:2,isMobile:true,hasTouch:true,userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'},true);
- console.log('ALL PASSED');}catch(e){console.log(e.message);process.exit(1)}})();
+
+(async () => {
+  const browser = await chromium.launch(launchOptions);
+  try {
+    await run(browser, false);
+    await run(browser, true);
+  } finally {
+    await browser.close();
+  }
+})().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+});

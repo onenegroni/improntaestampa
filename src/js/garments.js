@@ -52,7 +52,6 @@ export function surface(nu, nv, fn, { skip = null, wrapU = false, uvFn = null } 
 function tube(points, radiusFn, nu = 48, { ellip = 1, up = new THREE.Vector3(0, 0, 1) } = {}) {
   // points: array of Vector3 along path; radiusFn(t)
   const curve = new THREE.CatmullRomCurve3(points);
-  const frames = curve.computeFrenetFrames(points.length * 8, false);
   const nv = points.length * 8;
   return surface(nu, nv, (u, v) => {
     const p = curve.getPointAt(v); const T = curve.getTangentAt(v);
@@ -91,25 +90,25 @@ export function torsoFn(o) {
     // shoulder line caps the height, so the top reads as a sloped plane, not a dome
     const ax = Math.abs(x), yTop = yNeck - slope * Math.max(0, ax - 0.072);
     let y = smin(yl, yTop, 0.012);
-    // ---- folds ----
-    const side = Math.pow(Math.abs(s), 3);
-    // diagonal drag folds from the armpit toward the centre, front and back
-    const ap = sstep(0.04, 0.17, yl) * (1 - sstep(0.17, 0.2, yl));
-    const diag = Math.sin((ax * 46 - yl * 30) + (c > 0 ? 0.4 : 1.7)) * ap * sstep(0.1, 0.19, ax) * 0.0032;
-    // gentle compression folds at the waist sides
-    const wst = Math.exp(-Math.pow((yl + 0.14) / 0.08, 2)) * side * Math.sin(yl * 70 + (s > 0 ? 0 : 1.3)) * 0.0011;
-    // fabric falls in a few soft vertical waves toward the hem
-    const hemW = sstep(-0.05, -0.34, yl);
-    const drape = (Math.sin(th * 6 + 0.9) * 0.6 + Math.sin(th * 10 + 2.3) * 0.4) * 0.0032 * hemW;
-    const fine = vnoise(th * 4, yl * 14) * 0.0012 + vnoise(th * 11, yl * 40) * 0.0004;
-    // long soft vertical waves over the whole body (fabric never hangs perfectly flat)
-    const waves = (Math.sin(th * 4 + 0.6) * 0.6 + Math.sin(th * 7 + 2.0) * 0.4) * 0.0016 * (1 - sstep(0.12, 0.2, yl)) * (c > 0 ? 0.5 : 1);
-    const flat = c > 0 ? 1 - 0.55 * Math.pow(c, 6) * (1 - hemW * 0.5) : 1; // keep the print panel calm
-    const off = (diag + wst + drape * flat + fine * flat + waves) * wr;
-    const l = Math.hypot(x, z) || 1; x += x / l * off; z += z / l * off;
-    // hem: tiny outward flare and a turned stitch line
-    if (v < 0.02) { const k = 1 + 0.004 * (1 - v / 0.02); x *= k; z *= k; }
-    y += Math.sin(th * 5 + 1.1) * 0.0018 * (1 - sstep(0, 0.05, v)) * wr;
+    // Broad gravity folds start near the side seams and deepen at the loose hem.
+    // Smaller, asymmetric compression ridges pull away from each armpit.
+    const side = Math.pow(Math.abs(s), 2.4);
+    const hemWeight = sstep(0.05, -0.34, yl);
+    const chest = Math.pow(Math.max(0, c), 5);
+    const drape = (Math.sin(th * 5.0 + yl * 2.7) * 0.65 + Math.sin(th * 8.0 - yl * 3.5 + 1.7) * 0.35)
+      * (0.0014 + 0.0073 * hemWeight) * (1 - 0.64 * chest * (1 - hemWeight));
+    const pull = (ax - 0.15) * 0.8 + (yl - (s > 0 ? 0.066 : 0.080));
+    const armpit = (Math.exp(-Math.pow(pull / 0.026, 2)) - 0.64 * Math.exp(-Math.pow((pull + 0.022) / 0.022, 2)))
+      * sstep(0.08, 0.20, ax) * 0.0055;
+    const waist = Math.exp(-Math.pow((yl + 0.20 - 0.12 * s) / 0.073, 2)) * side
+      * Math.sin(yl * 55 + th * 1.7) * 0.0028;
+    const grain = vnoise(th * 6, yl * 15) * 0.00055;
+    const edge = sstep(0.016, 0.003, v) * 0.0014;
+    const off = (drape + armpit + waist + grain) * wr + edge;
+    const length = Math.hypot(x, z) || 1;
+    x += x / length * off + 0.0031 * hemWeight * wr;
+    z += z / length * off;
+    y += (Math.sin(th * 4 + 1.15) * 0.003 + Math.sin(th * 7 - 0.5) * 0.0012) * sstep(0.12, 0, v) * wr;
     return [x, y, z];
   };
   // arc-length U: the cross-section is a superellipse, so equal angle steps are NOT equal fabric widths.
@@ -140,6 +139,16 @@ export function collar(fn, { h = 0.016 } = {}) {
   }, { wrapU: true });
 }
 
+// Turned fabric facing inside a neckline or hem. A rolled edge catches light
+// and the inset surface gives the empty garment visible wall thickness.
+export function facing(fn, neck) {
+  return surface(160, 10, (u, v) => {
+    const [x, y, z] = fn(u, neck ? 1 : 0);
+    const inset = (neck ? 0.08 : 0.026) * Math.sin(v * Math.PI / 2);
+    return [x * (1 - inset), y + (neck ? -0.029 : 0.019) * v, z * (1 - inset)];
+  }, { wrapU: true });
+}
+
 /* ---------------- SLEEVES ----------------
    Empty sleeves: flattened front-to-back, falling from the shoulder under their own weight. */
 function tubeE(points, radiusFn, ellipFn, nu = 96) {
@@ -160,14 +169,14 @@ export function sleeve(side, { long = false } = {}) {
     : [new THREE.Vector3(0.14 * sx, 0.122, -0.004), new THREE.Vector3(0.205 * sx, 0.106, 0), new THREE.Vector3(0.258 * sx, 0.035, 0.004), new THREE.Vector3(0.283 * sx, -0.028, 0.006)];
   const r0 = long ? 0.08 : 0.084, r1 = long ? 0.05 : 0.066;
   const rad = (t, a) => {
-    let r = lerp(r0, r1, Math.pow(t, long ? 0.75 : 0.9));
-    // the underside gathers into the armpit; a couple of soft folds along the length
-    r *= 1 + (long ? (Math.sin(t * 48 + Math.cos(a) * 1.5) * 0.05 + vnoise(t * 9, a * 1.2) * 0.05) * sstep(0.62, 0.95, t) + vnoise(t * 5, a) * 0.025 : vnoise(t * 6, a * 1.3) * 0.02);
-    r *= 1 - 0.06 * Math.pow(Math.max(0, -Math.sin(a)), 3) * (1 - t);
-    if (!long) r *= 1 + Math.sin(a * 3 + t * 9) * 0.018 * Math.pow(Math.max(0, -Math.sin(a)), 2) * (1 - t) + Math.sin(t * 22 + a) * 0.008;
-    return r;
+    const base = lerp(r0, r1, Math.pow(t, long ? 0.75 : 0.9));
+    const belly = Math.pow(Math.max(0, -Math.sin(a)), 2);
+    const elbow = Math.exp(-Math.pow((t - 0.57) / 0.21, 2));
+    const gathers = Math.sin(t * 44 + 2 * Math.cos(a)) * (long ? 0.060 * elbow + 0.050 * sstep(.67, .93, t) : 0.038 * belly);
+    const falloff = sstep(0.02, 0.16, t) * (1 - sstep(0.83, 1, t));
+    return base * (1 - 0.07 * belly * (1 - t) + falloff * (gathers + vnoise(t * 7 + sx, a * 1.22) * 0.030));
   };
-  const geo = tubeE(pts, rad, t => long ? lerp(0.74, 0.58, t) : lerp(0.86, 0.6, t));
+  const geo = tubeE(pts, rad, t => long ? lerp(0.74, 0.58, t) : lerp(0.86, 0.60, t));
   const end = pts[pts.length - 1], prev = pts[pts.length - 2];
   return { geo, end, dir: end.clone().sub(prev).normalize(), r1, ellip: long ? 0.58 : 0.6 };
 }

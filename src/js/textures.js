@@ -135,7 +135,7 @@ export function drawPattern(g, preset, base, accentIn, w, h, { seed = 3, k = 1, 
 export function shade(g, W, H) {
   // fake ambient occlusion: darker toward side seams and the hem
   const gr = g.createLinearGradient(0, 0, W, 0);
-  [[0, .22], [.1, 0], [.4, 0], [.5, .22], [.6, 0], [.9, 0], [1, .22]].forEach(([p, a]) => gr.addColorStop(p, `rgba(0,0,0,${a})`));
+  [[0, .16], [.09, 0], [.41, 0], [.5, .16], [.59, 0], [.91, 0], [1, .16]].forEach(([p, a]) => gr.addColorStop(p, `rgba(0,0,0,${a})`));
   g.fillStyle = gr; g.fillRect(0, 0, W, H);
   const gv = g.createLinearGradient(0, 0, 0, H); gv.addColorStop(0, 'rgba(0,0,0,.08)'); gv.addColorStop(.12, 'rgba(0,0,0,0)'); gv.addColorStop(.93, 'rgba(0,0,0,0)'); gv.addColorStop(1, 'rgba(0,0,0,.12)');
   g.fillStyle = gv; g.fillRect(0, 0, W, H);
@@ -203,6 +203,11 @@ export function torsoCanvas(cv, st, { vOf, product, pocket = null }) {
   if (st.espalda) { g.fillStyle = t; fitText(g, st.espalda.toUpperCase(), s => `${s}px Anton`, 520 * sx, 124 * sx); outl(st.espalda.toUpperCase(), 1536 * sx, Yb(-0.156), 12); }
   const frase = (st.frase || '').toUpperCase();
   if (frase) { g.fillStyle = mix(t, base, 0.18); fitText(g, frase, s => `600 ${s}px "Barlow Condensed"`, 640 * sx, 34 * sx); g.fillText(frase, 1536 * sx, Yb(-0.19)); }
+  if (product === 'campera' && st.escuela) {
+    g.fillStyle = t;
+    fitText(g, st.escuela.toUpperCase(), size => `600 ${size}px "Barlow Condensed"`, 530 * sx, 29 * sx);
+    g.fillText(st.escuela.toUpperCase(), 1536 * sx, Yb(0.068));
+  }
   // brand tag below back collar
   imMark(g, 1536 * sx, Y(0.195), 13 * sx);
 }
@@ -231,7 +236,7 @@ export function flagCanvas(cv, st) {
   drawPattern(g, st.preset, st.colors.cuerpo, pcols(st), W, H, { seed: 31, k: W / 2048 });
   const t = ink(st.preset === 'galactico' ? '#0a0f2a' : st.colors.cuerpo);
   g.textAlign = 'center'; g.fillStyle = t;
-  const big = (st.espalda || 'PROMO').toUpperCase();
+  const big = (st.espalda || '').toUpperCase();
   fitText(g, big, s => `${s}px Anton`, W * 0.8, 380); g.fillText(big, W / 2, H * 0.58);
   if (st.escuela) { g.font = `600 64px "Barlow Condensed"`; fitText(g, st.escuela.toUpperCase(), s => `600 ${s}px "Barlow Condensed"`, W * 0.7, 64); g.fillText(st.escuela.toUpperCase(), W / 2, H * 0.72); }
   if (st.logoImg) drawLogo(g, st.logoImg, W / 2, H * 0.2, 220); else imMark(g, W / 2, H * 0.2, 80);
@@ -244,18 +249,35 @@ export function capCanvas(cv, st) {
   // front logo/text at u=0.25 (front = +z => g=PI/2 => u=0.25)
   const t = ink(st.preset === 'galactico' ? '#0a0f2a' : st.colors.cuerpo);
   if (st.logoImg) drawLogo(g, st.logoImg, W * 0.75, H * 0.58, H * 0.34);
-  else { g.fillStyle = t; g.textAlign = 'center'; const tx = (st.espalda || 'PROMO').toUpperCase(); fitText(g, tx, s => `${s}px Anton`, W * 0.17, H * 0.22); g.fillText(tx, W * 0.75, H * 0.6); }
+  if (st.espalda) {
+    g.fillStyle = t;
+    g.textAlign = 'center';
+    const caption = st.espalda.toUpperCase();
+    fitText(g, caption, size => `${size}px Anton`, W * 0.17, H * (st.logoImg ? 0.10 : 0.22));
+    g.fillText(caption, W * 0.75, H * (st.logoImg ? 0.37 : 0.60));
+  }
 }
 export function knitNormal(size = 256, kind = 'jersey') {
   const cv = document.createElement('canvas'); cv.width = cv.height = size; const g = cv.getContext('2d'); const img = g.createImageData(size, size);
-  const hgt = (x, y) => {
-    if (kind === 'rib') return Math.sin(x / size * Math.PI * 2 * 16) * 0.8;
-    // jersey: little V loops
-    const cx = (x / size) * 32, cy = (y / size) * 24; const fx = cx - Math.floor(cx), fy = cy - Math.floor(cy);
-    return Math.sin(fx * Math.PI) * 0.7 + Math.sin((fy + Math.abs(fx - 0.5) * 0.6) * Math.PI * 2) * 0.25;
+  const height = (x, y) => {
+    const u = x / size, v = y / size;
+    const cycle = Math.PI * 2;
+    if (kind === 'rib') {
+      return Math.cos(u * cycle * 14) * .85 + Math.sin(v * cycle * 29 + Math.sin(u * cycle * 14)) * .14;
+    }
+    if (kind === 'mesh') {
+      const row = Math.floor(v * 28), fx = ((u * 24 + row * .5) % 1) - .5, fy = (v * 28 % 1) - .5;
+      return -.8 * Math.exp(-(fx * fx * 20 + fy * fy * 13)) + .18 * Math.sin((u + v) * cycle * 37);
+    }
+    if (kind === 'fleece') {
+      return Math.sin(u * cycle * 23 + Math.sin(v * cycle * 27)) * .45
+        + Math.sin(v * cycle * 19 + Math.cos(u * cycle * 17)) * .38;
+    }
+    const cx = u * 30, cy = v * 26, fx = cx % 1, fy = cy % 1;
+    return Math.sin(fx * Math.PI) * .62 + Math.cos((fy + Math.abs(fx - .5) * .64) * cycle) * .38;
   };
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    const dx = hgt((x + 1) % size, y) - hgt((x - 1 + size) % size, y), dy = hgt(x, (y + 1) % size) - hgt(x, (y - 1 + size) % size);
+    const dx = height((x + 1) % size, y) - height((x - 1 + size) % size, y), dy = height(x, (y + 1) % size) - height(x, (y - 1 + size) % size);
     const n = [-dx * 0.5, -dy * 0.5, 1], l = Math.hypot(...n); const i = (y * size + x) * 4;
     img.data[i] = (n[0] / l * 0.5 + 0.5) * 255; img.data[i + 1] = (n[1] / l * 0.5 + 0.5) * 255; img.data[i + 2] = (n[2] / l * 0.5 + 0.5) * 255; img.data[i + 3] = 255;
   }
