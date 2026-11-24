@@ -176,50 +176,36 @@ const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t 
 export function torsoFn(o) {
   const { yHem, yNeck } = TORSO;
   const { width: widthP, frontDepth: bfP, backDepth: bbP } = o;
-  const kx = o.neckK, kz = o.neckKZ;
-  const drop = o.neckDrop, slope = o.slope, yA = 0.03;
+  const { neckK, neckDrop, slope } = o;
   const wr = o.wrinkle, nx = 2.76;
   const heavy = o.heavy === true;
-  const yN = th => {
-    const front = Math.cos(th);
-    return yNeck - drop * Math.pow(Math.max(0, front), o.tank ? 1.09 : 1.44)
-      - (o.tank ? .027 : .017) * Math.max(0, -front) ** 1.5
-      - (o.tank ? .021 : .0075) * (1 - front * front) ** 2;
+  const yN = front => {
+    const scoop = (neckDrop - .020) * Math.max(0, front) ** (o.tank ? 1.10 : 1.55);
+    return yNeck - .020 - scoop + .004 * Math.max(0, -front) ** 2;
   };
-  const section = (u, y) => {
-    const angle = (u - .25) * TAU;
-    const across = Math.sin(angle), depth = Math.cos(angle);
+  const section = (across, depth, y) => {
     const width = prof(widthP, y);
     const volume = prof(depth > 0 ? bfP : bbP, y);
     const depthCurve = lerp(1.07, .89, sstep(-.18, .13, y));
     return [
       width * Math.sign(across) * Math.abs(across) ** (2 / nx),
       volume * Math.sign(depth) * Math.abs(depth) ** depthCurve,
-      across,
-      depth,
     ];
   };
   const fn = (u, v) => {
-    const angle = (u - .25) * TAU;
-    const yTopN = yN(angle), yl = lerp(yHem, yTopN, v);
-    const q = clamp((yl - yA) / (yTopN - yA), 0, 1);
-    const [sectionX, sectionZ, s, c] = section(u, Math.min(yl, .205));
-    // The section stays wide through the armhole and turns over the deltoids
-    // before joining the neckline. Front and rear retain separate depths.
-    const shoulderTravel = .781 + .130 * Math.abs(s) ** 1.38;
-    let x = sectionX * lerp(1, kx, sstep(shoulderTravel, 1, v));
-    let z = sectionZ * lerp(1, kz, sstep(.43, 1, q));
+    const angle = (u - .25) * TAU, s = Math.sin(angle), c = Math.cos(angle);
+    const yl = lerp(yHem, yN(c), v);
+    const [sectionX, sectionZ] = section(s, c, yl);
+    // The shoulder blends across the collarbone instead of wrapping around
+    // a single high point. Depth already follows the fitted form at each height.
+    const turn = .772 + .122 * Math.abs(s) ** 1.38;
+    let x = sectionX * lerp(1, neckK, sstep(turn, 1, v));
+    let z = sectionZ;
     const ax = Math.abs(x);
-    const shoulder = Math.max(0, ax - .073);
-    const yTop = yNeck - slope * shoulder - .015 * sstep(.145, .205, ax)
-      - .009 * Math.abs(c) * sstep(.089, .17, ax);
-    let y = smin(yl, yTop, .013);
-
+    const yTop = yNeck - slope * .163 * sstep(.065, .213, ax)
+      - .0075 * Math.abs(c) * sstep(.095, .180, ax);
+    let y = smin(yl, yTop, .022);
     const front = Math.max(0, c), back = Math.max(0, -c);
-    const pectoral = .0057 * crease(ax - .087, .056) * crease(yl - .088, .114) * front ** 2;
-    const shoulderBlade = .0078 * crease(ax - .098, .058) * crease(yl - .092, .110) * back ** 2;
-    const posture = .012 * sstep(-.15, .149, yl) - .008 * sstep(-.075, -.32, yl);
-    z += pectoral - shoulderBlade + posture;
 
     const side = Math.abs(s) ** 1.45;
     const ease = 1 - sstep(-.10, .12, yl);
@@ -227,7 +213,7 @@ export function torsoFn(o) {
     const drape = (.0021 + .0040 * hemWeight)
       * (Math.sin(angle * 5 + yl * 6.1) * .75 + Math.sin(angle * 9 - yl * 2.7) * .25);
     const armpitPath = yl - .035 + (ax - .143) * (s < 0 ? .64 : .84);
-    const armpit = side * .0057 * (crease(armpitPath, .020) - .53 * crease(armpitPath + .020, .024));
+    const armpit = side * .0046 * (crease(armpitPath, .025) - .51 * crease(armpitPath + .021, .027));
     // Diagonal folds travel inwards from the seams as the fabric hangs loose
     // over the waist, leaving the upper chest clear for personalized artwork.
     const firstFold = yl + .242 + .020 * s + .043 * c + (ax - .086) * (s < 0 ? .69 : .45);
@@ -255,7 +241,8 @@ export function torsoFn(o) {
   const NS = 1024, cum = new Float64Array(NS + 1);
   let previousX = 0, previousZ = 0;
   for (let i = 0; i <= NS; i++) {
-    const [x, z] = section(i / NS, .05);
+    const angle = (i / NS - .25) * TAU;
+    const [x, z] = section(Math.sin(angle), Math.cos(angle), .05);
     if (i > 0) cum[i] = cum[i - 1] + Math.hypot(x - previousX, z - previousZ);
     previousX = x;
     previousZ = z;
@@ -263,7 +250,7 @@ export function torsoFn(o) {
   const L = u => { const f = clamp(u, 0, 1) * NS, i = Math.min(NS - 1, Math.floor(f)); return lerp(cum[i], cum[i + 1], f - i); };
   const Q = [0, 0.25, 0.5, 0.75, 1].map(L);
   const arcU = u => { const q = Math.min(3, Math.floor(clamp(u, 0, 0.99999) * 4)); return (q + (L(u) - Q[q]) / (Q[q + 1] - Q[q])) / 4; };
-  fn.uv = (u, v) => { const th = (u - 0.25) * TAU; const yl = lerp(yHem, yN(th), v); return [arcU(u), 0.8 * (yl - yHem) / (TORSO.yS - yHem)]; };
+  fn.uv = (u, v) => { const th = (u - 0.25) * TAU; const yl = lerp(yHem, yN(Math.cos(th)), v); return [arcU(u), 0.8 * (yl - yHem) / (TORSO.yS - yHem)]; };
   fn.arcU = arcU;
   return fn;
 }
@@ -354,7 +341,7 @@ export function sleeve(side, hole, { long = false, sport = false } = {}) {
     if (fraction === 1) return b;
     return { center: a.center.clone().lerp(b.center, fraction), front: a.front.clone().lerp(b.front, fraction), upper: a.upper.clone().lerp(b.upper, fraction) };
   }
-  const rootWidth = long ? .079 : .069, rootDepth = long ? .071 : .066;
+  const rootWidth = long ? .076 : .069, rootDepth = long ? .064 : .061;
   const endWidth = long ? .041 : sport ? .052 : .049;
   const endDepth = long ? .039 : sport ? .046 : .043;
   const shell = (u, v) => {
@@ -378,14 +365,14 @@ export function sleeve(side, hole, { long = false, sport = false } = {}) {
     );
     const gathers = (long ? .0018 : .0008) * crease(v - .89, .11) * (1 - sstep(.94, 1, v)) * Math.cos(angle * 5 + v * 10);
     const finish = Math.pow(v, long ? 1.15 : .82);
-    const muscle = (long ? .0061 : .005) * (crease(v - .32, .19) - crease(.32, .19) * (1 - v))
+    const muscle = (long ? .0042 : .0044) * (crease(v - .35, .21) - crease(.35, .21) * (1 - v))
       * (1 - sstep(.83, 1, v));
     const width = lerp(rootWidth, endWidth, finish) + muscle + amplitude * pinch + elbow + gathers;
     const depth = lerp(rootDepth, endDepth, finish) + muscle * 1.16 + amplitude * 1.4 * pinch + elbow * .56 + gathers;
     const root = hole.at(angle, 1.001);
     const sourceRing = outer(frames[0], angle, rootDepth, rootWidth);
     const currentRing = outer(frame, angle, depth, width);
-    const seamFit = 1 - sstep(0, long ? .34 : .65, v);
+    const seamFit = 1 - sstep(0, long ? .39 : .68, v);
     return currentRing.map((value, axis) => value + (root[axis] - sourceRing[axis]) * seamFit);
   };
   const finish = frames[64];
@@ -438,7 +425,7 @@ export function hood(fn) {
     const edge = [
       side * (.021 + .169 * arch),
       .202 - .086 * load + .006 * side,
-      .091 - .192 * arch,
+      .080 - .183 * arch,
     ];
     const upper = [
       neck[0] + side * .062 * arch,
