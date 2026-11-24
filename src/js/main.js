@@ -478,9 +478,15 @@ function load3D() {
   loading = (async () => {
     if (!webglOK()) throw new Error('WebGL no disponible');
     if (!window.ImprontaStudio) await loadScript('js/studio.js');
-    try { await Promise.race([Promise.all(['10px Anton', '600 10px "Barlow Condensed"', 'italic 10px "DM Serif Display"'].map(f => document.fonts.load(f))), new Promise(r => setTimeout(r, 1500))]); } catch (e) { }
+    const fontSpecs = ['14px Anton', '600 14px "Barlow Condensed"', 'italic 14px "DM Serif Display"'];
+    let fontsLoaded = false;
+    const printFontsReady = Promise.all(fontSpecs.map(spec =>
+      Promise.resolve().then(() => document.fonts.load(spec)).catch(() => [])
+    )).then(() => { fontsLoaded = true; });
+    await Promise.race([printFontsReady, new Promise(resolve => setTimeout(resolve, 1500))]);
+    const fontsLoadedAtStart = fontsLoaded;
     await new Promise((res, rej) => {
-      api = window.ImprontaStudio.createConfigurator($('#gl'), state, { onReady: () => {
+      api = window.ImprontaStudio.createConfigurator($('#gl'), state, { printFontsReady, onReady: () => {
         clearTimeout(timer);
         const v = $('#viewer'); v.classList.remove('fallback'); v.classList.add('ready'); v.setAttribute('aria-busy', 'false');
         const fb = $('#fb'); if (fb) fb.remove(); failed = false;
@@ -494,6 +500,7 @@ function load3D() {
         showFallback('se perdió el contexto WebGL');
       } });
     });
+    if (!fontsLoadedAtStart) printFontsReady.then(() => api?.refreshPrintFonts());
     window.__impronta = { api, state, applyPreset, sync, loadMs: Math.round(performance.now() - t0) };
     applyFit();
     api.onZonePick(z => selectZone(z, true));

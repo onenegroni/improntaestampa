@@ -2,7 +2,7 @@
 import * as THREE from './vendor/three.module.min.js';
 
 export function lum(hex) { const c = new THREE.Color(hex); return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b; }
-export const ink = hex => (lum(hex) > 0.45 ? '#141414' : '#f4f1ec');
+export const ink = hex => (lum(hex) > 0.205 ? '#141414' : '#fafafa');
 function rng(seed) { let s = seed % 2147483647 || 7; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
 function mix(a, b, t) { const A = new THREE.Color(a), B = new THREE.Color(b); return '#' + A.lerp(B, t).getHexString(); }
 
@@ -17,29 +17,85 @@ function rgbOf(hex) {
   const c = new THREE.Color(hex).convertLinearToSRGB();
   return [c.r * 255, c.g * 255, c.b * 255];
 }
-// one reusable scratch canvas (creating a canvas per repaint exhausts Safari's canvas memory budget on iPhone)
-let _scr = null; function scratch(w, h) { if (!_scr) _scr = document.createElement('canvas'); if (_scr.width !== w || _scr.height !== h) { _scr.width = w; _scr.height = h; } else _scr.getContext('2d').clearRect(0, 0, w, h); return _scr; }
-// tie-dye spiral, computed per pixel at 1/4 resolution then smoothly upscaled (soft by nature, cheap to draw)
-function tieDye(g, w, h, cols, centres, R) {
-  const lw = Math.max(16, Math.ceil(w / 4)), lh = Math.max(16, Math.ceil(h / 4));
-  const cv = scratch(lw, lh); const cx = cv.getContext('2d'); const img = cx.createImageData(lw, lh), d = img.data;
-  const C = cols.map(rgbOf), N = C.length, ph = R() * 10, sc = Math.min(lw, lh);
-  for (let y = 0; y < lh; y++) for (let x = 0; x < lw; x++) {
-    let best = 1e9, bx = 0, by = 0; for (const [ux, uy] of centres) { let dx = x - ux * lw; if (dx > lw / 2) dx -= lw; if (dx < -lw / 2) dx += lw; const dy = (y - uy * lh) * 1.15, dd = dx * dx + dy * dy; if (dd < best) { best = dd; bx = dx; by = dy; } }
-    const r = Math.sqrt(best) / sc, th = Math.atan2(by, bx);
-    const slow = Math.sin(x * .045 + ph) * Math.cos(y * .052 - ph) * .60 + Math.sin((x - y) * .021 + ph * 2) * .40;
-    const fleck = .24 * Math.sin(x * .63 + y * .47) * Math.cos(y * .61 - ph);
-    const n = slow + fleck;
-    let t = th / (Math.PI * 2) + r * 2.1 + n * 0.05; t = ((t % 1) + 1) % 1 * N;
-    const i = Math.floor(t), f = t - i, a = C[i % N], b = C[(i + 1) % N], m = f < 0.72 ? 0 : (f - 0.72) / 0.28, s = m * m * (3 - 2 * m);
-    // crinkle: pale streaks radiating along the folds, strongest near band edges
-    const edge = Math.max(0, 1 - Math.abs(f - 0.86) * 5), cr = Math.pow(Math.max(0, Math.sin(th * 34 + Math.sin(r * 13 + ph) * 1.7 + Math.sin(th * 13 + r * 22) * .85)), 26) * (0.15 + 0.85 * edge) * 0.6 + edge * 0.06;
-    const k = (y * lw + x) * 4;
-    for (let c = 0; c < 3; c++) { const v = a[c] + (b[c] - a[c]) * s; d[k + c] = v + (255 - v) * cr; }
-    d[k + 3] = 255;
+const dyeFields = new WeakMap();
+// The motif is evaluated at native resolution in stable logical coordinates.
+// Pack its palette band and two blend weights for fast text and colour edits.
+function buildDyeField(width, height, w, h, centres, ph) {
+  const pixels = new Uint16Array(width * height);
+  const lw = w / 4, lh = h / 4, sc = Math.min(lw, lh);
+  const threshold = lw / 2;
+  const distances = centres.map(([ux, uy]) => ({
+    y: uy * lh,
+    x: Float32Array.from({ length: width }, (_, i) => {
+      const dx = (i + .5) * lw / width - ux * lw;
+      return dx > threshold ? dx - lw : dx < -threshold ? dx + lw : dx;
+    }),
+  }));
+  const xs = Float32Array.from({ length: width }, (_, i) => (i + .5) * lw / width);
+  const wave = xs.map(x => Math.sin(x * .045 + ph));
+  const broadSin = xs.map(x => Math.sin(x * .021)), broadCos = xs.map(x => Math.cos(x * .021));
+  const fineSin = xs.map(x => Math.sin(x * .63)), fineCos = xs.map(x => Math.cos(x * .63));
+  let pixel = 0;
+  for (let yi = 0; yi < height; yi++) {
+    const y = (yi + .5) * lh / height;
+    const slowY = Math.cos(y * .052 - ph) * .60;
+    const fleckY = Math.cos(y * .61 - ph) * .24;
+    const broadY = ph * 2 - y * .021;
+    const bs = Math.sin(broadY) * .40, bc = Math.cos(broadY) * .40;
+    const fs = Math.sin(y * .47) * fleckY, fc = Math.cos(y * .47) * fleckY;
+    const dy0 = (y - distances[0].y) * 1.15;
+    const dy1 = distances[1] ? (y - distances[1].y) * 1.15 : 0;
+    for (let i = 0; i < width; i++, pixel++) {
+      let bx = distances[0].x[i], by = dy0;
+      let distance = bx * bx + by * by;
+      if (distances[1]) {
+        const dx = distances[1].x[i], second = dx * dx + dy1 * dy1;
+        if (second < distance) { bx = dx; by = dy1; distance = second; }
+      }
+      const r = Math.sqrt(distance) / sc, th = Math.atan2(by, bx);
+      const noise = wave[i] * slowY + broadSin[i] * bc + broadCos[i] * bs + fineSin[i] * fc + fineCos[i] * fs;
+      let t = th / (Math.PI * 2) + r * 2.1 + noise * .05;
+      t = (t - Math.floor(t)) * 4;
+      const band = Math.floor(t), f = t - band;
+      const m = Math.max(0, (f - .72) / .28), s = m * m * (3 - 2 * m);
+      const edge = Math.max(0, 1 - Math.abs(f - .86) * 5);
+      const crease = Math.max(0, Math.sin(th*34 + Math.sin(r*13+ph)*1.7 + Math.sin(th*13+r*22)*.85));
+      const lift = Math.pow(crease,26) * (.15 + .85 * edge) * .6 + edge * .06;
+      pixels[pixel] = (band << 14) | (Math.round(s * 127) << 7) | Math.round(lift * 192);
+    }
   }
-  cx.putImageData(img, 0, 0); g.save(); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'; g.drawImage(cv, 0, 0, w, h); g.restore();
+  return pixels;
 }
+
+function tieDye(g, w, h, cols, centres, R) {
+  const width = g.canvas.width, height = g.canvas.height, ph = R() * 10;
+  const key = [width, height, w, h, ph, ...centres.flat()].join('/');
+  let field = dyeFields.get(g);
+  if (field?.key !== key) {
+    field = { key, pixels: buildDyeField(width, height, w, h, centres, ph) };
+    dyeFields.set(g, field);
+  }
+  const img = g.createImageData(width, height), d = img.data;
+  const colours = cols.map(rgbOf);
+  const palette = new Uint8ClampedArray(4 * 65536);
+  for (let i = 0; i < 65536; i++) {
+    const band = i >> 14, blend = ((i >> 7) & 127) / 127, lift = (i & 127) / 192;
+    const a = colours[band], b = colours[(band + 1) % 4];
+    for (let channel = 0; channel < 3; channel++) {
+      const value = a[channel] + (b[channel] - a[channel]) * blend;
+      palette[i * 4 + channel] = value + (255 - value) * lift;
+    }
+  }
+  for (let i = 0, offset = 0; i < field.pixels.length; i++, offset += 4) {
+    const colour = field.pixels[i] * 4;
+    d[offset] = palette[colour];
+    d[offset + 1] = palette[colour + 1];
+    d[offset + 2] = palette[colour + 2];
+    d[offset + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+}
+
 function smiley(g, x, y, r, col) {
   g.save(); g.translate(x, y);
   g.fillStyle = col; g.beginPath(); g.arc(0, 0, r, 0, 7); g.fill();
@@ -79,6 +135,7 @@ function hand(g, R, x, y, scale, rotation, color) {
   g.restore();
 }
 export function drawPattern(g, preset, base, accentIn, w, h, { seed = 3, k = 1, region = 'body' } = {}) {
+  if (preset !== 'tiedye') dyeFields.delete(g);
   const R = rng(seed);
   const [accent, ac2, ac3] = Array.isArray(accentIn) ? accentIn : [accentIn, '#f4f1ec', accentIn];
   g.save();
@@ -150,20 +207,23 @@ export function drawPattern(g, preset, base, accentIn, w, h, { seed = 3, k = 1, 
       g.fillStyle = mix(col, R() < 0.5 ? '#000000' : '#ffffff', R() * 0.08); g.beginPath(); g.moveTo(...a); g.lineTo(...b); g.lineTo(...c); g.closePath(); g.fill(); g.strokeStyle = g.fillStyle; g.lineWidth = 1; g.stroke(); };
     for (let j = 0; j < rows; j++) for (let i = 0; i < colsN; i++) { const a = jit[j][i], b = jit[j][i + 1], c = jit[j + 1][i], d = jit[j + 1][i + 1]; tri(a, b, c, (a[1] + c[1]) / 2); tri(b, d, c, (b[1] + d[1]) / 2); }
   }
-  // subtle print grain
-  g.globalAlpha = 0.05; for (let i = 0; i < 1200; i++) { g.fillStyle = R() < 0.5 ? '#000' : '#fff'; g.fillRect(R() * w, R() * h, 2, 2); } g.globalAlpha = 1;
   g.restore();
 }
 
 function fitText(g, txt, font, maxW, size) { let s = size; g.font = font(s); while (g.measureText(txt).width > maxW && s > 8) { s -= 2; g.font = font(s); } return s; }
 export function imMark(g, x, y, r) {
-  g.fillStyle = '#f4f1ec'; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+  g.fillStyle = '#fff'; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
   g.fillStyle = '#c8161d'; g.beginPath(); g.arc(x, y, r * 0.86, 0, 7); g.fill();
   g.fillStyle = '#fff'; g.font = `italic ${r * 1.25}px "DM Serif Display"`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('im', x - r * 0.04, y - r * 0.08);
 }
 export function drawLogo(g, img, x, y, size) {
   if (!img) return;
-  const s = Math.min(size / img.width, size / img.height); const w = img.width * s, h = img.height * s;
+  const width = img.naturalWidth || img.width, height = img.naturalHeight || img.height;
+  if (!width || !height) return;
+  const scale = size / Math.max(width,height);
+  const w = width * scale, h = height * scale;
+  // Keep the original SVG or bitmap as the source. Rasterize it once into
+  // the final sRGB print canvas at its physical atlas-pixel size.
   g.drawImage(img, x - w / 2, y - h / 2, w, h);
 }
 
@@ -188,7 +248,7 @@ function line(g, x1, y1, x2, y2) {
   g.stroke();
 }
 export function torsoCanvas(cv, st, { vOf, product }) {
-  const W = cv.width, H = cv.height, g = cv.getContext('2d');
+  const W = cv.width, H = cv.height, g = cv.context;
   drawPattern(g, st.preset, st.colors.cuerpo, pcols(st), W, H, { seed: 11, k: W / 2048, region: 'body' });
   const Y = y => (1 - vOf(y)) * H;
   const base = st.preset === 'galactico' ? '#0a0f2a' : (st.preset === 'tiedye' || st.preset === 'manitos') ? '#1b1f3b' : st.colors.cuerpo;
@@ -206,7 +266,7 @@ export function torsoCanvas(cv, st, { vOf, product }) {
       g.strokeText(nm, 285 * sx, nameY); g.restore();
     }
     g.fillText(nm, 285 * sx, nameY);
-    g.font = `600 ${21 * sx}px "Barlow Condensed"`; g.fillStyle = mix(t, base, 0.35);
+    g.font = `600 ${21 * sx}px "Barlow Condensed"`; g.fillStyle = mix(t, base, 0.09);
     const sub = [st.espalda, st.escuela].filter(Boolean).join(' · ').toUpperCase();
     fitText(g, sub, s => `600 ${s}px "Barlow Condensed"`, 250 * sx, 25 * sx);
     g.fillText(sub, 287 * sx, nameY + 34 * sx);
@@ -234,7 +294,7 @@ export function torsoCanvas(cv, st, { vOf, product }) {
   }
   if (st.espalda) { g.fillStyle = t; fitText(g, st.espalda.toUpperCase(), s => `${s}px Anton`, 520 * sx, (jacket ? 110 : 124) * sx); outl(st.espalda.toUpperCase(), 1536 * sx, Y(jacket ? -.193 : -.156), 12); }
   const frase = (st.frase || '').toUpperCase();
-  if (frase) { g.fillStyle = mix(t, base, 0.18); fitText(g, frase, s => `600 ${s}px "Barlow Condensed"`, 640 * sx, 34 * sx); g.fillText(frase, 1536 * sx, Y(jacket ? -.259 : -.190)); }
+  if (frase) { g.fillStyle = mix(t, base, 0.08); fitText(g, frase, s => `600 ${s}px "Barlow Condensed"`, 640 * sx, 34 * sx); g.fillText(frase, 1536 * sx, Y(jacket ? -.259 : -.190)); }
   if (jacket && st.escuela) {
     g.fillStyle = t;
     fitText(g, st.escuela.toUpperCase(), size => `600 ${size}px "Barlow Condensed"`, 530 * sx, 29 * sx);
@@ -245,13 +305,13 @@ export function torsoCanvas(cv, st, { vOf, product }) {
 }
 
 export function plainCanvas(cv, st, zone, { pattern = false, seed = 5 } = {}) {
-  const g = cv.getContext('2d');
+  const g = cv.context;
   if (pattern && st.preset !== 'liso') drawPattern(g, st.preset, st.colors[zone], pcols(st), cv.width, cv.height, { seed, k: cv.width / 2048, region: 'side' });
-  else { g.fillStyle = st.colors[zone]; g.fillRect(0, 0, cv.width, cv.height); }
+  else { dyeFields.delete(g); g.fillStyle = st.colors[zone]; g.fillRect(0, 0, cv.width, cv.height); }
 }
 export function hoodCanvas(cv, st) {
   plainCanvas(cv, st, 'capucha', {pattern: st.printAll, seed: 13});
-  const g = cv.getContext('2d'), W = cv.width, H = cv.height;
+  const g = cv.context, W = cv.width, H = cv.height;
   stitch(g, W / 1024, st.colors.capucha, () => {
     line(g, W * .494, 0, W * .494, H);
     line(g, W * .506, 0, W * .506, H);
@@ -259,7 +319,7 @@ export function hoodCanvas(cv, st) {
   });
 }
 export function shortCanvas(cv, st, withoutNumber) {
-  const g = cv.getContext('2d'), W = cv.width, H = cv.height;
+  const g = cv.context, W = cv.width, H = cv.height;
   const base = st.colors.short;
   drawPattern(g, st.preset === 'splash' ? 'liso' : st.preset, base, pcols(st), W, H, { seed: 21, k: W / 2048 });
   const sx = W / 1024;
@@ -269,7 +329,7 @@ export function shortCanvas(cv, st, withoutNumber) {
     [.944, .962].forEach(y => line(g, 0, y * H, W, y * H));
     [.013, .487, .513, .987].forEach(x => line(g, x * W, 0, x * W, .95 * H));
   });
-  withoutNumber.getContext('2d').drawImage(cv, 0, 0);
+  withoutNumber.context.drawImage(cv.canvas, 0, 0, W, H);
   if (st.numero) {
     g.fillStyle = ink(base);
     g.textAlign = 'center';
@@ -278,7 +338,7 @@ export function shortCanvas(cv, st, withoutNumber) {
   }
 }
 export function flagCanvas(cv, st) {
-  const g = cv.getContext('2d'), W = cv.width, H = cv.height;
+  const g = cv.context, W = cv.width, H = cv.height;
   drawPattern(g, st.preset, st.colors.cuerpo, pcols(st), W, H, { seed: 31, k: W / 2048 });
   const trim = W * .014;
   g.fillStyle = 'rgba(17,17,17,.15)';
@@ -298,7 +358,7 @@ export function flagCanvas(cv, st) {
   if (st.logoImg) drawLogo(g, st.logoImg, W / 2, H * 0.2, 220); else imMark(g, W / 2, H * 0.2, 80);
 }
 export function capCanvas(cv, st, seams) {
-  const g = cv.getContext('2d'), W = cv.width, H = cv.height;
+  const g = cv.context, W = cv.width, H = cv.height;
   drawPattern(g, st.preset, st.colors.cuerpo, pcols(st), W, H, { seed: 41, k: W / 2048 * .7 });
   const sx = W / 1024;
   const c = st.colors.cuerpo;
@@ -391,19 +451,11 @@ function yarnTile(kind) {
   yarns.set(kind, tile);
   return tile;
 }
-export function applyWeave(canvas, kind, scale, scan) {
-  const context = canvas.getContext('2d');
-  const image = scan ? scan.image : yarnTile(kind);
-  const pitch = scale * (kind === 'fleece' ? 1.33 : 1);
-  const dx = scan ? canvas.width / (image.width * scan.repeat[0]) : pitch;
-  const dy = scan ? canvas.height / (image.height * scan.repeat[1]) : pitch;
-  context.save();
-  context.globalCompositeOperation = 'soft-light';
-  context.globalAlpha = scan ? (kind === 'fleece' ? .58 : .50) : (kind === 'fleece' ? .50 : .39);
-  context.scale(dx, dy);
-  context.fillStyle = context.createPattern(image, 'repeat');
-  context.fillRect(0, 0, canvas.width / dx, canvas.height / dy);
-  context.restore();
+export function fabricGrain(kind) {
+  const texture = new THREE.CanvasTexture(yarnTile(kind));
+  texture.colorSpace = THREE.NoColorSpace;
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  return texture;
 }
 export function fabricRoughness(kind, repeat) {
   const canvas = document.createElement('canvas'), source = yarnTile(kind);

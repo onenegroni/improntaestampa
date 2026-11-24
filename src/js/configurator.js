@@ -15,7 +15,7 @@ import sportsNormal from './fabric-scans/sports-normal.webp';
 import sportsSurface from './fabric-scans/sports-surface.webp';
 import sportsGrain from './fabric-scans/sports-grain.webp';
 
-const TEX = { visor: [768, 384], torso: [2048, 1024], sleeve: [1024, 512], hood: [1024, 512], short: [1024, 512], shortPlain: [1024, 512], flag: [2048, 1365], cap: [1024, 512] };
+const PRINT_LAYOUT = { visor: [768, 384], torso: [2048, 1024], sleeve: [1024, 512], hood: [1024, 512], short: [1024, 512], shortPlain: [1024, 512], flag: [2048, 1365], cap: [1024, 512] };
 const ZONE_MATERIALS = {
   cuerpo: ['torso', 'flag', 'cap', 'facing'],
   short: ['short', 'shortPlain', 'shortFacing'],
@@ -45,19 +45,39 @@ const lowPower = (() => {
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const nextFrame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
 
-export function createConfigurator(canvasHost, state, { onReady, onError, onLost } = {}) {
-  const renderer = new THREE.WebGLRenderer({ antialias: !lowPower, alpha: true, powerPreference: 'high-performance' });
-  const dprCap = Math.min(window.devicePixelRatio || 1, isMobile ? 2 : 1.5), dprMin = lowPower ? 0.6 : isMobile ? 1 : 0.75; // phones: crisp 2x live view
-  let dpr = lowPower ? Math.min(0.75, dprCap) : dprCap;
+// Keep the linear swatch response through the midtones. Shape the darkest
+// shadows and brightest highlights with one scale for all channels.
+THREE.ShaderChunk.tonemapping_pars_fragment = THREE.ShaderChunk.tonemapping_pars_fragment.replace(
+  'vec3 CustomToneMapping( vec3 color ) { return color; }',
+  `vec3 CustomToneMapping( vec3 color ) {
+    color *= toneMappingExposure;
+    float peak = max(max(color.r, color.g), color.b);
+    color *= mix(0.56, 1.0, smoothstep(0.0, 0.075, peak));
+    const float knee = 0.68;
+    if (peak <= knee) return color;
+    float highlight = 1.0 - knee;
+    float range = peak - knee;
+    return color * ((knee + highlight * range / (range + highlight)) / peak);
+  }`
+);
+
+export function createConfigurator(canvasHost, state, { onReady, onError, onLost, printFontsReady } = {}) {
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+  const dprMin = 1;
+  const dprCap = Math.min(Math.max(window.devicePixelRatio || 1, dprMin), 2);
+  let dpr = lowPower ? dprMin : dprCap;
   renderer.setPixelRatio(dpr);
-  renderer.toneMapping = THREE.AgXToneMapping; renderer.toneMappingExposure = 1.12;
+  // Product swatches are SDR. Light in linear sRGB, with calibrated light
+  // energy and exposure, rather than grading the selected hues filmically.
+  renderer.toneMapping = THREE.CustomToneMapping;
+  renderer.toneMappingExposure = 1;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap; renderer.shadowMap.autoUpdate = false;
   canvasHost.appendChild(renderer.domElement);
   const scene = new THREE.Scene();
   const cam = new THREE.PerspectiveCamera(26, 1, 0.05, 30);
-  const key = new THREE.DirectionalLight(0xfff8f3, 1.62);
-  key.position.set(-2.9, 3.8, 4.3);
+  const key = new THREE.DirectionalLight(0xffffff, 2.86);
+  key.position.set(-3.05, 3.3, 4.8);
   key.castShadow = true;
   const LIVE_SM = lowPower ? 512 : 1024;
   key.shadow.mapSize.set(LIVE_SM, LIVE_SM);
@@ -66,13 +86,13 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   key.shadow.bias = -.00021;
   key.shadow.normalBias = .0044;
   scene.add(key);
-  const rim = new THREE.DirectionalLight(0xf5f7ff, .76);
+  const rim = new THREE.DirectionalLight(0xffffff, .66);
   rim.position.set(1.8, 1.55, -2.6);
   scene.add(rim);
-  const fill = new THREE.DirectionalLight(0xfffcf6, .76);
+  const fill = new THREE.DirectionalLight(0xffffff, .43);
   fill.position.set(1.35, .72, 3.4);
   scene.add(fill);
-  scene.add(new THREE.HemisphereLight(0xf8f7f2, 0x8b8374, .46));
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x969696, .23));
 
   const spin = new THREE.Group(); scene.add(spin);
   const anim = new THREE.Group(); spin.add(anim);
@@ -81,13 +101,14 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   const darkM = new THREE.MeshStandardMaterial({ color: 0x262823, roughness: 0.65, metalness: 0.1 });
 
   const fabrics = {
-    deportiva: { kind: 'mesh', sources: [sportsNormal, sportsSurface, sportsGrain], roughness: .92, sheen: .17, sheenRoughness: .76, scale: .69, spec: .22 },
+    deportiva: { kind: 'mesh', sources: [sportsNormal, sportsSurface, sportsGrain], roughness: .92, sheen: .14, sheenRoughness: .76, scale: .69, spec: .10 },
     modal: { kind: 'jersey', sources: [jerseyNormal, jerseySurface, jerseyGrain], roughness: .97, sheen: .21, sheenRoughness: .87, scale: .76, spec: .14 },
     frizado: { kind: 'fleece', sources: [fleeceNormal, fleeceSurface, fleeceGrain], roughness: .99, sheen: .34, sheenRoughness: .92, scale: .66, spec: .078 },
   };
   const panelRepeats = {
     torso: [3.3, 1.9], sleeve: [1.34, .59], longSleeve: [1.36, 1.46],
     hood: [1.24, .91], lining: [1.24, .91], fleeceTorso: [2.48, 1.75], short: [1.45, 1.54], shortPlain: [1.45, 1.54],
+    flag: [4.3, 2.8], cap: [1.85, 1.13], visor: [1.4, .68],
   };
   const panelFor = (part, product) => {
     if (product === 'campera' && (part === 'torso' || part === 'facing')) return 'fleeceTorso';
@@ -96,6 +117,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     if (part === 'sleeve' && product === 'campera') return 'longSleeve';
     return part;
   };
+  const maxAnisotropy = Math.max(1, renderer.capabilities.getMaxAnisotropy());
   const textureLoader = new THREE.TextureLoader();
   const swatchesReady = Promise.all(Object.values(fabrics).map(async fabric => {
     const maps = await Promise.allSettled(fabric.sources.map(src => textureLoader.loadAsync(src)));
@@ -103,13 +125,14 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       [fabric.normal, fabric.roughMap] = maps.slice(0, 2).map(map => {
         const texture = map.value;
         texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-        texture.anisotropy = lowPower ? 2 : 8;
+        texture.anisotropy = Math.min(maxAnisotropy, 8);
+        texture.colorSpace = THREE.NoColorSpace;
         return texture;
       });
       fabric.grainTexture = maps[2].value;
       fabric.grainTexture.wrapS = fabric.grainTexture.wrapT = THREE.RepeatWrapping;
-      fabric.grainTexture.anisotropy = lowPower ? 2 : 8;
-      fabric.grain = fabric.grainTexture.image;
+      fabric.grainTexture.anisotropy = Math.min(maxAnisotropy, 8);
+      fabric.grainTexture.colorSpace = THREE.NoColorSpace;
       fabric.panels = new Map();
     } else {
       // Older browsers can still use the procedural textile if image decoding fails.
@@ -117,6 +140,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       fabric.normal = T.knitNormal(192, fabric.kind);
       fabric.normal.repeat.set(13, 8);
       fabric.roughMap = T.fabricRoughness(fabric.kind, [12, 8]);
+      fabric.grainTexture = T.fabricGrain(fabric.kind);
     }
   }));
   function panelSwatch(fabric, panel) {
@@ -131,30 +155,57 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     return fabric.panels.get(panel);
   }
   const twillRoughness = T.fabricRoughness('twill', [11, 7]);
+  const twillGrain = T.fabricGrain('twill');
   let capNet = null;
   const twill = T.knitNormal(160, 'twill'); twill.repeat.set(21, 11);
   const rib = T.knitNormal(128, 'rib'); rib.repeat.set(13, 2);
+  const NEEDS = { remera: ['torso', 'sleeve'], campera: ['torso', 'sleeve', 'hood'], conjunto: ['torso', 'sleeve', 'short', 'shortPlain'], musculosa: ['torso'], bandera: ['flag'], gorra: ['cap', 'visor'] };
   const texes = {};
-  const canvases = {};
-  function mkTex(canvas, name) {
+  const surfaces = {};
+  const maxTextureSize = renderer.capabilities.maxTextureSize;
+  const basePrintSize = Math.min(2048, maxTextureSize);
+  const canUseCloseupAtlas = !isMobile && !lowPower && maxTextureSize >= 4096;
+
+  function createSurface(name, size) {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = size;
+    const context = canvas.getContext('2d', { alpha: false, colorSpace: 'srgb' });
+    const [width, height] = PRINT_LAYOUT[name];
+    // Always rasterize the original design at native atlas resolution, using
+    // its authored coordinate space so UV placements stay exactly the same.
+    context.setTransform(size / width, 0, 0, size / height, 0, 0);
+    context.imageSmoothingQuality = 'high';
     const texture = new THREE.CanvasTexture(canvas);
     if (name === 'short' || name === 'shortPlain') texture.wrapS = THREE.RepeatWrapping;
     texture.colorSpace = THREE.SRGBColorSpace;
-    texture.anisotropy = lowPower ? 2 : 8;
+    texture.anisotropy = Math.min(maxAnisotropy, lowPower ? 8 : 16);
     texture.generateMipmaps = true;
     texture.minFilter = THREE.LinearMipmapLinearFilter;
-    return texture;
+    texture.magFilter = THREE.LinearFilter;
+    return { canvas, context, width, height, texture };
   }
-  function canvasFor(name) {
-    if (!canvases[name]) {
-      const canvas = document.createElement('canvas');
-      [canvas.width, canvas.height] = TEX[name].map(size => lowPower && isMobile ? Math.round(size * .75) : size);
-      canvases[name] = canvas;
-      texes[name] = mkTex(canvas, name);
+  function disposeSurface(surface) {
+    surface.texture.dispose();
+    surface.canvas.width = surface.canvas.height = 0;
+  }
+  function primaryPrint() { return NEEDS[state.producto][0]; }
+  function closeupPrint(zoom) { return canUseCloseupAtlas && zoom >= 1.65; }
+  function surfaceFor(name) {
+    const size = name === primaryPrint() && closeupPrint(view.zoom) ? 4096 : basePrintSize;
+    const previous = surfaces[name];
+    if (previous?.canvas.width === size) return previous;
+    const surface = createSurface(name, size);
+    surfaces[name] = surface;
+    texes[name] = surface.texture;
+    if (previous) {
+      for (const material of Object.values(parts)) {
+        if (material.map === previous.texture) material.map = surface.texture;
+      }
+      disposeSurface(previous);
     }
-    return canvases[name];
+    return surface;
   }
-  const NEEDS = { remera: ['torso', 'sleeve'], campera: ['torso', 'sleeve', 'hood'], conjunto: ['torso', 'sleeve', 'short', 'shortPlain'], musculosa: ['torso'], bandera: ['flag'], gorra: ['cap', 'visor'] };
+
   const temporaryMaterials = new Set();
   function own(material) { temporaryMaterials.add(material); return material; }
   function fabricMat(map, { ribbed = false, side = THREE.DoubleSide } = {}) {
@@ -162,10 +213,10 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     const grain = f.panels ? f.scale : .34;
     return own(new THREE.MeshPhysicalMaterial({
       map, side, roughness: f.roughness, roughnessMap: f.roughMap,
-      envMapIntensity: .73, vertexColors: true, normalMap: ribbed ? rib : f.normal,
+      envMapIntensity: .32, vertexColors: true, normalMap: ribbed ? rib : f.normal,
       normalScale: new THREE.Vector2(grain, grain),
-      sheen: lowPower ? 0 : f.sheen, sheenRoughness: f.sheenRoughness,
-      sheenColor: new THREE.Color(0xc2bdb6), specularIntensity: f.spec,
+      sheen: f.sheen, sheenRoughness: f.sheenRoughness,
+      sheenColor: new THREE.Color(0xc0c0c0), specularIntensity: f.spec,
     }));
   }
   function colorMat(hex, opts) { const m = fabricMat(null, { ribbed: true, ...opts }); m.color.set(hex); return m; }
@@ -278,9 +329,9 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   contactCanvas.width = contactCanvas.height = 128;
   const contactContext = contactCanvas.getContext('2d');
   const contactGradient = contactContext.createRadialGradient(64, 64, 0, 64, 64, 64);
-  contactGradient.addColorStop(0, 'rgba(38,31,27,.33)');
-  contactGradient.addColorStop(.41, 'rgba(42,36,30,.14)');
-  contactGradient.addColorStop(1, 'rgba(42,36,30,0)');
+  contactGradient.addColorStop(0, 'rgba(33,33,33,.36)');
+  contactGradient.addColorStop(.41, 'rgba(38,38,38,.14)');
+  contactGradient.addColorStop(1, 'rgba(38,38,38,0)');
   contactContext.fillStyle = contactGradient;
   contactContext.fillRect(0, 0, 128, 128);
   const contactTexture = new THREE.CanvasTexture(contactCanvas);
@@ -300,12 +351,19 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     const P = state.producto;
     const fitted = P !== 'bandera' && P !== 'gorra';
     const fleece = P === 'campera';
-    key.intensity = fleece ? 1.97 : fitted ? 2.14 : 1.62;
-    key.color.setHex(fitted ? 0xfffcf9 : 0xfff8f3);
+    key.intensity = fleece ? 2.68 : fitted ? 2.86 : 2.62;
     key.shadow.bias = fitted ? -.00009 : -.00021;
     key.shadow.normalBias = fitted ? .0015 : .0044;
-    fill.intensity = fleece ? .59 : fitted ? .45 : .76;
-    rim.intensity = fleece ? .57 : fitted ? .66 : .76;
+    fill.intensity = fleece ? .61 : fitted ? .48 : .56;
+    rim.intensity = fleece ? .56 : fitted ? .66 : .63;
+    // Only the current product keeps a resident atlas. In particular, a
+    // sports kit's two numbered/plain shorts atlases leave memory on switch.
+    for (const name of Object.keys(surfaces)) {
+      if (NEEDS[P].includes(name)) continue;
+      disposeSurface(surfaces[name]);
+      delete surfaces[name];
+      delete texes[name];
+    }
     product.rotation.set(0, 0, 0);
     product.position.set(0, 0, 0);
     paintTextures();
@@ -322,7 +380,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       const [width, height] = state.talle.split('×').map(parseFloat);
       const clothHeight = Math.min(.8, 1.2 * (height / width || .64));
       const geometry = G.flagGeo(1.2, clothHeight);
-      const material = parts.flag = fabricMat(texes.flag);
+      const material = parts.flag = fittedFabric('flag', THREE.DoubleSide);
       const cloth = mesh(geometry, material);
       cloth.position.set(-.58, .195, 0);
       product.add(cloth);
@@ -343,14 +401,14 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       const shape = G.cap();
       const cap = new THREE.Group();
       cap.rotation.x = .08;
-      const crown = parts.cap = fabricMat(texes.cap);
+      const crown = parts.cap = fittedFabric('cap', THREE.DoubleSide);
       if (!lowPower) {
         capNet ||= T.truckerMeshMask();
         crown.alphaMap = capNet;
         crown.alphaTest = .43;
         crown.alphaToCoverage = true;
       }
-      const visor = parts.visor = fabricMat(texes.visor);
+      const visor = parts.visor = fittedFabric('visor', THREE.DoubleSide);
       const trim = parts.punos = colorMat(state.colors.punos);
       cap.add(mesh(shape.crown, crown), mesh(shape.inner, strapMaterial), mesh(shape.band, trim), mesh(shape.button, trim));
       cap.add(mesh(shape.visorTop, visor), mesh(shape.visorBottom, visor), mesh(shape.visorEdge, visor));
@@ -421,28 +479,34 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       renderer.render(scene, cam);
     }
   }
-  function drawInto(get) {
-    const st = state, P = st.producto, need = NEEDS[P] || [];
-    if (need.includes('torso')) {
-      T.torsoCanvas(get('torso'), st, { vOf, product: P });
+  function drawInto(get, names) {
+    const st = state, product = st.producto;
+    if (names.includes('torso')) T.torsoCanvas(get('torso'), st, { vOf, product });
+    if (names.includes('sleeve')) T.plainCanvas(get('sleeve'), st, 'mangas', { pattern: st.printAll, seed: 9 });
+    if (names.includes('hood')) T.hoodCanvas(get('hood'), st);
+    if (names.includes('short')) T.shortCanvas(get('short'), st, get('shortPlain'));
+    if (names.includes('flag')) T.flagCanvas(get('flag'), st);
+    if (names.includes('cap')) T.capCanvas(get('cap'), st, G.CAP_SEAMS);
+    if (names.includes('visor')) T.plainCanvas(get('visor'), st, 'mangas');
+  }
+  function printSignature(name) {
+    const st = state;
+    const accents = [st.preset, ...T.pcols(st)];
+    const sidePrint = st.printAll ? accents : [];
+    const text = [st.nombre, st.numero, st.espalda, st.escuela, st.frase];
+    switch (name) {
+      case 'torso': return [st.producto, st.colors.cuerpo, ...accents, ...text];
+      case 'sleeve': return [st.colors.mangas, ...sidePrint];
+      case 'hood': return [st.colors.capucha, ...sidePrint];
+      case 'short':
+      case 'shortPlain': return [st.colors.short, ...accents, st.numero];
+      case 'flag': return [st.colors.cuerpo, ...accents, st.espalda, st.escuela];
+      case 'cap': return [st.colors.cuerpo, ...accents, st.espalda];
+      default: return [st.colors.mangas];
     }
-    if (need.includes('sleeve')) T.plainCanvas(get('sleeve'), st, 'mangas', { pattern: st.printAll, seed: 9 });
-    if (need.includes('hood')) T.hoodCanvas(get('hood'), st);
-    if (need.includes('short')) T.shortCanvas(get('short'), st, get('shortPlain'));
-    if (need.includes('flag')) T.flagCanvas(get('flag'), st);
-    if (need.includes('cap')) T.capCanvas(get('cap'), st, G.CAP_SEAMS);
-    if (need.includes('visor')) T.plainCanvas(get('visor'), st, 'mangas');
-    const fixed = P === 'gorra' || P === 'bandera';
-    const fabric = fabrics[st.tela] || fabrics.deportiva;
-    const weave = fixed ? 'twill' : fabric.kind;
-    for (const name of need) {
-      const canvas = get(name);
-      const repeat = panelRepeats[panelFor(name, P)];
-      if (!fixed && fabric.grainTexture) continue;
-      const scan = !fixed && fabric.grain && { image: fabric.grain, repeat };
-      T.applyWeave(canvas, weave, canvas.width / TEX[name][0], scan);
-    }
-    return need;
+  }
+  function printLogo(name) {
+    return ['torso', 'flag', 'cap'].includes(name) ? state.logoImg : null;
   }
   function matTargets() {
     const st = state, f = fabrics[st.tela] || fabrics.deportiva;
@@ -463,14 +527,14 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       list.push([parts[key].color, color]);
     }
     for (const [name, material] of Object.entries(parts)) {
+      const accessory = name === 'cap' || name === 'visor' || name === 'flag';
       const grainLayer = material.userData.clothGrain;
       if (grainLayer) {
-        grainLayer.cloth.value = f.grainTexture || null;
-        grainLayer.relief.value = f.grainTexture ? (f.kind === 'fleece' ? 1.77 : 1.52) : 0;
-        material.anisotropy = !lowPower && f.kind === 'mesh' ? .16 : 0;
+        grainLayer.cloth.value = accessory ? twillGrain : f.grainTexture;
+        grainLayer.relief.value = accessory ? .37 : f.kind === 'fleece' ? .92 : .71;
+        material.anisotropy = !accessory && f.kind === 'mesh' ? .12 : 0;
       }
       if (!material.normalMap) continue;
-      const accessory = name === 'cap' || name === 'visor' || name === 'flag';
       const ribbed = material.normalMap === rib;
       const swatch = accessory ? { normal: twill, surface: twillRoughness } : panelSwatch(f, panelFor(name, st.producto));
       const contact = !accessory && !ribbed && f.panels ? swatch.surface : null;
@@ -479,7 +543,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       material.aoMapIntensity = .36;
       material.roughness = accessory ? .94 : f.roughness;
       material.roughnessMap = swatch.surface;
-      material.sheen = accessory ? 0 : lowPower ? (f.kind === 'fleece' ? f.sheen * .48 : 0) : f.sheen;
+      material.sheen = accessory ? 0 : f.sheen;
       material.specularIntensity = accessory ? .22 : f.spec;
       material.sheenRoughness = f.sheenRoughness;
       if (!ribbed) material.normalMap = swatch.normal;
@@ -490,7 +554,16 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   }
   let paintTimer = 0;
   function paintTextures() {
-    for (const name of drawInto(canvasFor)) texes[name].needsUpdate = true;
+    const changed = NEEDS[state.producto].filter(name => {
+      const surface = surfaceFor(name);
+      const key = JSON.stringify(printSignature(name)), logo = printLogo(name);
+      if (surface.key === key && surface.logo === logo) return false;
+      surface.key = key;
+      surface.logo = logo;
+      return true;
+    });
+    drawInto(name => surfaces[name], changed);
+    for (const name of changed) texes[name].needsUpdate = true;
     matTargets().forEach(([color, target]) => color.copy(target));
     dirty = true;
   }
@@ -538,7 +611,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   }
   function resize() {
     const r = canvasHost.getBoundingClientRect(); const w = Math.max(1, r.width), h = Math.max(1, r.height); hostH = h;
-    renderer.setSize(w, h, false); renderer.domElement.style.width = w + 'px'; renderer.domElement.style.height = h + 'px';
+    renderer.setSize(Math.ceil(w), Math.ceil(h), false); renderer.domElement.style.width = w + 'px'; renderer.domElement.style.height = h + 'px';
     cam.aspect = w / h; cam.updateProjectionMatrix(); frame(); dirty = true;
     // a resized canvas is cleared by the browser: redraw right away so it never flashes empty
     if (inited && running) { placeCam(); renderer.render(scene, cam); }
@@ -588,7 +661,14 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   const up = e => { ptrs.delete(e.pointerId); el.style.cursor = hoverZ ? 'pointer' : 'grab'; };
   el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
   el.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); setZoom(view.zoom * (e.deltaY > 0 ? 0.92 : 1.08)); }, { passive: false });
-  function setZoom(z) { view.zoom = G.clamp(z, 0.8, 2.6); dirty = true; emit(); }
+  function setZoom(z) {
+    const next = G.clamp(z, .8, 2.6);
+    const updatePrint = closeupPrint(view.zoom) !== closeupPrint(next);
+    view.zoom = next;
+    if (updatePrint) repaint();
+    dirty = true;
+    emit();
+  }
   let listeners = [];
   function emit() { listeners.forEach(f => f(view)); }
 
@@ -661,16 +741,17 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   ready.catch(e => { console.warn(e); onError && onError(e); });
 
   // ---------- high-res render ----------
-  const bgCv = document.createElement('canvas'); bgCv.width = 512; bgCv.height = 512; { const g = bgCv.getContext('2d'); const gr = g.createRadialGradient(235, 205, 10, 256, 256, 360); gr.addColorStop(0, '#faf8f6'); gr.addColorStop(.55, '#eeece9'); gr.addColorStop(1, '#dcd9d4'); g.fillStyle = gr; g.fillRect(0, 0, 512, 512); }
+  const bgCv = document.createElement('canvas'); bgCv.width = 512; bgCv.height = 512; { const g = bgCv.getContext('2d'); const gr = g.createRadialGradient(235, 205, 10, 256, 256, 360); gr.addColorStop(0, '#fafafa'); gr.addColorStop(.55, '#eeeeee'); gr.addColorStop(1, '#dedede'); g.fillStyle = gr; g.fillRect(0, 0, 512, 512); }
   const bgTex = new THREE.CanvasTexture(bgCv); bgTex.colorSpace = THREE.SRGBColorSpace;
   const ANGLES = [['frente', 0], ['espalda', Math.PI], ['perfil', -Math.PI / 2], ['3-4', -0.6]];
   async function renderSet({ w = isMobile ? 1080 : 1600, h = isMobile ? 1260 : 1866, angles = ANGLES, transparent = false, zoom = 1, pitch = 0.08, dist = 0, cy = null } = {}) {
     await ready;
+    if (printFontsReady) await printFontsReady;
     if (tweening) rebuild(false);
     clearTimeout(paintTimer);
     paintTimer = 0;
     paintTextures();
-    const ss = lowPower ? 1.5 : 1;
+    const ss = renderer.getContext().getContextAttributes().antialias ? 1 : 1.5;
     const prev = {
       yaw: spin.rotation.y,
       dpr: renderer.getPixelRatio(),
@@ -710,24 +791,17 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
         downsample.width = w;
         downsample.height = h;
       }
-      if (!isMobile && !lowPower) {
-        const textures = {};
-        drawInto(name => {
-          if (!textures[name]) {
-            const canvas = document.createElement('canvas');
-            [canvas.width, canvas.height] = TEX[name].map(size => size * 2);
-            textures[name] = canvas;
-          }
-          return textures[name];
-        });
-        Object.entries(textures).forEach(([name, canvas]) => {
-          const material = parts[name];
-          if (!material) return;
-          const texture = mkTex(canvas, name);
-          texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-          hi.push([material, texture, material.map]);
-          material.map = texture;
-        });
+      const name = primaryPrint();
+      const live = surfaces[name];
+      if (canUseCloseupAtlas && live.canvas.width < 4096 && (Math.max(w, h) >= 1400 || closeupPrint(zoom))) {
+        const detail = createSurface(name, 4096);
+        hi.push({ detail, replaced: [], previous: live.texture });
+        drawInto(() => detail, [name]);
+        for (const material of Object.values(parts)) {
+          if (material.map !== live.texture) continue;
+          hi[0].replaced.push(material);
+          material.map = detail.texture;
+        }
       }
       for (const [name, angle] of angles) {
         spin.rotation.y = angle;
@@ -746,11 +820,12 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       }
     } finally {
       if (downsample) downsample.width = downsample.height = 0;
-      hi.forEach(([material, texture, previous]) => {
-        material.map = previous;
-        texture.dispose();
-        texture.image.width = texture.image.height = 0;
-      });
+      for (const { detail, replaced, previous } of hi) {
+        for (const material of replaced) {
+          if (material.map === detail.texture) material.map = previous;
+        }
+        disposeSurface(detail);
+      }
       scene.background = null;
       key.shadow.mapSize.set(prev.shadowSize, prev.shadowSize);
       key.shadow.map?.dispose();
@@ -779,7 +854,15 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       view.snap = true;
       wake();
     },
-    rebuild, repaint, renderSet, yaw: () => spin.rotation.y, ready, lowPower, stats: () => ({ why: lastWhy, dpr, ema: Math.round(ema), frames: frameN, auto: view.auto }),
+    rebuild, repaint, renderSet, yaw: () => spin.rotation.y, ready, lowPower, stats: () => ({
+      why: lastWhy, dpr, ema: Math.round(ema), frames: frameN, auto: view.auto,
+      printAtlases: Object.fromEntries(Object.entries(surfaces).map(([name, { canvas }]) =>
+        [name, [canvas.width, canvas.height]])),
+    }),
+    refreshPrintFonts() {
+      for (const surface of Object.values(surfaces)) surface.key = null;
+      repaint();
+    },
     setYaw(angle) {
       wake();
       view.auto = false;
