@@ -13,7 +13,10 @@ function blobPath(g, R, x, y, r, n = 9) { const pts = []; for (let i = 0; i < n;
   g.beginPath(); for (let i = 0; i <= n; i++) { const p0 = pts[i % n], p1 = pts[(i + 1) % n]; const mx = (p0[0] + p1[0]) / 2, my = (p0[1] + p1[1]) / 2; i ? g.quadraticCurveTo(p0[0], p0[1], mx, my) : g.moveTo(mx, my); } g.closePath(); }
 
 function hueShift(hex, deg) { const c = new THREE.Color(hex); const hsl = {}; c.getHSL(hsl); c.setHSL(((hsl.h + deg / 360) % 1 + 1) % 1, hsl.s, hsl.l); return '#' + c.getHexString(); }
-function rgbOf(hex) { const c = new THREE.Color(hex); return [c.r * 255, c.g * 255, c.b * 255]; }
+function rgbOf(hex) {
+  const c = new THREE.Color(hex).convertLinearToSRGB();
+  return [c.r * 255, c.g * 255, c.b * 255];
+}
 // one reusable scratch canvas (creating a canvas per repaint exhausts Safari's canvas memory budget on iPhone)
 let _scr = null; function scratch(w, h) { if (!_scr) _scr = document.createElement('canvas'); if (_scr.width !== w || _scr.height !== h) { _scr.width = w; _scr.height = h; } else _scr.getContext('2d').clearRect(0, 0, w, h); return _scr; }
 // tie-dye spiral, computed per pixel at 1/4 resolution then smoothly upscaled (soft by nature, cheap to draw)
@@ -24,11 +27,13 @@ function tieDye(g, w, h, cols, centres, R) {
   for (let y = 0; y < lh; y++) for (let x = 0; x < lw; x++) {
     let best = 1e9, bx = 0, by = 0; for (const [ux, uy] of centres) { let dx = x - ux * lw; if (dx > lw / 2) dx -= lw; if (dx < -lw / 2) dx += lw; const dy = (y - uy * lh) * 1.15, dd = dx * dx + dy * dy; if (dd < best) { best = dd; bx = dx; by = dy; } }
     const r = Math.sqrt(best) / sc, th = Math.atan2(by, bx);
-    const n = Math.sin(x * 0.045 + ph) * Math.cos(y * 0.052 - ph) * 0.6 + Math.sin((x - y) * 0.021 + ph * 2) * 0.4;
+    const slow = Math.sin(x * .045 + ph) * Math.cos(y * .052 - ph) * .60 + Math.sin((x - y) * .021 + ph * 2) * .40;
+    const fleck = .24 * Math.sin(x * .63 + y * .47) * Math.cos(y * .61 - ph);
+    const n = slow + fleck;
     let t = th / (Math.PI * 2) + r * 2.1 + n * 0.05; t = ((t % 1) + 1) % 1 * N;
     const i = Math.floor(t), f = t - i, a = C[i % N], b = C[(i + 1) % N], m = f < 0.72 ? 0 : (f - 0.72) / 0.28, s = m * m * (3 - 2 * m);
     // crinkle: pale streaks radiating along the folds, strongest near band edges
-    const edge = Math.max(0, 1 - Math.abs(f - 0.86) * 5), cr = Math.pow(Math.max(0, Math.sin(th * 34 + Math.sin(r * 12 + ph) * 1.6)), 26) * (0.15 + 0.85 * edge) * 0.6 + edge * 0.06;
+    const edge = Math.max(0, 1 - Math.abs(f - 0.86) * 5), cr = Math.pow(Math.max(0, Math.sin(th * 34 + Math.sin(r * 13 + ph) * 1.7 + Math.sin(th * 13 + r * 22) * .85)), 26) * (0.15 + 0.85 * edge) * 0.6 + edge * 0.06;
     const k = (y * lw + x) * 4;
     for (let c = 0; c < 3; c++) { const v = a[c] + (b[c] - a[c]) * s; d[k + c] = v + (255 - v) * cr; }
     d[k + 3] = 255;
@@ -43,16 +48,34 @@ function smiley(g, x, y, r, col) {
   g.lineWidth = r * 0.1; g.lineCap = 'round'; g.beginPath(); g.arc(0, r * 0.02, r * 0.55, 0.18 * Math.PI, 0.82 * Math.PI); g.stroke();
   g.restore();
 }
-// a child's painted handprint: palm + fingers, with paint-stamp texture
-function hand(g, R, x, y, s, rot, col) {
-  g.save(); g.translate(x, y); g.rotate(rot); g.fillStyle = col;
-  g.beginPath(); g.ellipse(0, s * 0.18, s * 0.4, s * 0.46, 0, 0, 7); g.fill();
-  const finger = (a, len, wd, ox) => { g.save(); g.translate(ox, -s * 0.12); g.rotate(a); g.beginPath(); g.ellipse(0, -len / 2, wd / 2, len / 2, 0, 0, 7); g.fill(); g.restore(); };
-  finger(-0.32, s * 0.62, s * 0.19, -s * 0.24); finger(-0.1, s * 0.74, s * 0.2, -s * 0.08); finger(0.08, s * 0.72, s * 0.2, s * 0.09); finger(0.3, s * 0.58, s * 0.18, s * 0.24);
-  g.save(); g.translate(-s * 0.32, s * 0.24); g.rotate(-1.05); g.beginPath(); g.ellipse(0, -s * 0.26, s * 0.1, s * 0.27, 0, 0, 7); g.fill(); g.restore();
-  // stamp texture: tiny unpainted pores
-  g.globalCompositeOperation = 'destination-out'; g.globalAlpha = 0.35;
-  for (let i = 0; i < 26; i++) { g.beginPath(); g.arc((R() - 0.5) * s * 0.8, (R() - 0.3) * s * 0.9, (0.6 + R() * 1.6) * s / 60, 0, 7); g.fill(); }
+// An irregular palm stamp. Pores lighten the ink without removing the cloth underneath.
+let palm;
+function hand(g, R, x, y, scale, rotation, color) {
+  palm ||= new Path2D(
+    'M -.40 .27 C -.50 .19 -.62 .04 -.57 -.052 C -.54 -.12 -.47 -.10 -.40 -.04 L -.28 .08 ' +
+    'C -.30 -.10 -.40 -.32 -.43 -.47 C -.45 -.55 -.39 -.59 -.34 -.55 C -.29 -.51 -.23 -.30 -.18 -.22 ' +
+    'C -.15 -.22 -.15 -.25 -.15 -.28 L -.21 -.71 C -.22 -.80 -.16 -.84 -.11 -.81 C -.06 -.78 -.045 -.70 -.031 -.60 ' +
+    'L .032 -.30 C .045 -.27 .074 -.27 .084 -.31 L .081 -.75 C .084 -.84 .142 -.876 .184 -.842 ' +
+    'C .226 -.808 .221 -.735 .218 -.65 L .201 -.29 C .204 -.25 .232 -.247 .247 -.278 L .325 -.57 ' +
+    'C .35 -.65 .405 -.651 .436 -.609 C .468 -.56 .430 -.459 .412 -.365 L .345 -.085 ' +
+    'C .34 .037 .397 .111 .342 .311 C .312 .457 .223 .583 .069 .629 C -.071 .676 -.210 .595 -.258 .491 ' +
+    'C -.291 .417 -.328 .333 -.40 .27 Z'
+  );
+  g.save();
+  g.translate(x, y);
+  g.rotate(rotation);
+  g.scale(R() < .5 ? -scale : scale, scale);
+  g.fillStyle = color;
+  g.fill(palm);
+  g.clip(palm);
+  g.fillStyle = 'rgba(238,225,207,.24)';
+  for (let i = 0; i < 40; i++) {
+    const px = (R() - .5) * 1.1, py = (R() - .55) * 1.55;
+    const radius = .004 + .015 * R() * R();
+    g.beginPath();
+    g.ellipse(px, py, radius, radius * .67, 0, 0, Math.PI * 2);
+    g.fill();
+  }
   g.restore();
 }
 export function drawPattern(g, preset, base, accentIn, w, h, { seed = 3, k = 1, region = 'body' } = {}) {
@@ -133,9 +156,9 @@ export function drawPattern(g, preset, base, accentIn, w, h, { seed = 3, k = 1, 
 }
 
 export function shade(g, W, H) {
-  // fake ambient occlusion: darker toward side seams and the hem
+  // Subtle dye variation around the seams and hem.
   const gr = g.createLinearGradient(0, 0, W, 0);
-  [[0, .16], [.09, 0], [.41, 0], [.5, .16], [.59, 0], [.91, 0], [1, .16]].forEach(([p, a]) => gr.addColorStop(p, `rgba(0,0,0,${a})`));
+  [[0, .09], [.09, 0], [.41, 0], [.5, .09], [.59, 0], [.91, 0], [1, .09]].forEach(([p, a]) => gr.addColorStop(p, `rgba(0,0,0,${a})`));
   g.fillStyle = gr; g.fillRect(0, 0, W, H);
   const gv = g.createLinearGradient(0, 0, 0, H); gv.addColorStop(0, 'rgba(0,0,0,.08)'); gv.addColorStop(.12, 'rgba(0,0,0,0)'); gv.addColorStop(.93, 'rgba(0,0,0,0)'); gv.addColorStop(1, 'rgba(0,0,0,.12)');
   g.fillStyle = gv; g.fillRect(0, 0, W, H);
@@ -172,18 +195,7 @@ function line(g, x1, y1, x2, y2) {
   g.lineTo(x2, y2);
   g.stroke();
 }
-function sewPath(g, points, width, height) {
-  g.beginPath();
-  let last = -2;
-  for (const [u, v] of points) {
-    const x = u * width, y = (1 - v) * height;
-    if (Math.abs(u - last) > .25) g.moveTo(x, y);
-    else g.lineTo(x, y);
-    last = u;
-  }
-  g.stroke();
-}
-export function torsoCanvas(cv, st, { vOf, product, pocket = null, shoulderSeams }) {
+export function torsoCanvas(cv, st, { vOf, product }) {
   const W = cv.width, H = cv.height, g = cv.getContext('2d');
   drawPattern(g, st.preset, st.colors.cuerpo, pcols(st), W, H, { seed: 11, k: W / 2048, region: 'body' });
   const Y = y => (1 - vOf(y)) * H;
@@ -191,7 +203,6 @@ export function torsoCanvas(cv, st, { vOf, product, pocket = null, shoulderSeams
   const base = st.preset === 'galactico' ? '#0a0f2a' : (st.preset === 'tiedye' || st.preset === 'manitos') ? '#1b1f3b' : st.colors.cuerpo;
   const t = ink(base), sx = W / 2048;
   g.textBaseline = 'alphabetic';
-  if (shoulderSeams) shoulderSeams.forEach(points => stitch(g, sx, base, () => sewPath(g, points, W, H)));
   // front chest
   const nm = (st.nombre || '').toUpperCase();
   if (product !== 'campera') {
@@ -202,13 +213,11 @@ export function torsoCanvas(cv, st, { vOf, product, pocket = null, shoulderSeams
     fitText(g, sub, s => `600 ${s}px "Barlow Condensed"`, 250 * sx, 25 * sx); g.fillText(sub, 287 * sx, Y(0.085) + 34 * sx);
     if (st.logoImg) drawLogo(g, st.logoImg, 680 * sx, Y(0.1), 110 * sx); else imMark(g, 680 * sx, Y(0.1), 42 * sx);
   } else {
-    // campera: name on left chest (viewer's right side of zipper), logo on the other
+    // Leave room at the zipper and keep the stitched shoulder mark above the name.
     g.textAlign = 'center'; g.fillStyle = t;
     fitText(g, nm, s => `${s}px Anton`, 150 * sx, 54 * sx); g.fillText(nm, 338 * sx, Y(0.08));
-    if (st.logoImg) drawLogo(g, st.logoImg, 650 * sx, Y(0.095), 100 * sx); else imMark(g, 650 * sx, Y(0.095), 38 * sx);
-    // kangaroo pocket: topstitching along its edge (the pocket layer shares this texture)
-    if (pocket) pocket.forEach((half, hi) => { const pts = half.map(([u, v]) => [u * W, (1 - v) * H]); const dir = hi ? -1 : 1;
-      stitch(g, sx, base, () => { g.beginPath(); pts.forEach(([x, y], i) => { const xx = x + (i <= 24 ? dir * 7 : 0) * sx, yy = y + (i > 24 ? 7 : 0) * sx; i ? g.lineTo(xx, yy) : g.moveTo(xx, yy); }); g.stroke(); }); });
+    if (st.logoImg) drawLogo(g, st.logoImg, 650 * sx, Y(0.095), 100 * sx); else imMark(g, 320 * sx, Y(0.149), 32 * sx);
+
   }
   // double-needle hem + side seams (subtle, like real cut-and-sewn garments)
   if (product !== 'campera') stitch(g, sx, base, () => { [0.016, 0.022].forEach(d => { g.beginPath(); g.moveTo(0, Y(-0.34 + d)); g.lineTo(W, Y(-0.34 + d)); g.stroke(); }); });
@@ -337,13 +346,6 @@ export function capCanvas(cv, st, seams) {
     g.fillText(caption, W * 0.75, H * (st.logoImg ? 0.37 : 0.60));
   }
 }
-export function visorCanvas(cv, st) {
-  plainCanvas(cv, st, 'mangas');
-  const g = cv.getContext('2d'), W = cv.width, H = cv.height;
-  stitch(g, W / 768, st.colors.mangas, () => {
-    [.10, .17, .24, .31, .38].forEach(y => line(g, 0, H * y, W, H * y));
-  });
-}
 export function knitNormal(size = 256, kind = 'jersey') {
   const cv = document.createElement('canvas'); cv.width = cv.height = size; const g = cv.getContext('2d'); const img = g.createImageData(size, size);
   const height = (x, y) => {
@@ -374,4 +376,88 @@ export function knitNormal(size = 256, kind = 'jersey') {
   }
   g.putImageData(img, 0, 0);
   const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+}
+
+// This repeatable albedo tile models interlaced yarn, filament variation and the
+// fine lint that remains visible under printed ink. Normal and roughness use the same grain.
+const yarns = new Map();
+function yarnTile(kind) {
+  if (yarns.has(kind)) return yarns.get(kind);
+  const size = 144, tile = document.createElement('canvas');
+  tile.width = tile.height = size;
+  const ctx = tile.getContext('2d'), img = ctx.createImageData(size, size);
+  const random = rng(2327 + kind.length);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const a = Math.PI * 2 * x / size, b = Math.PI * 2 * y / size;
+      const warp = Math.sin(28 * a + .32 * Math.sin(7 * b));
+      const weft = Math.cos(24 * b + .45 * Math.sin(6 * a));
+      const yarn = kind === 'fleece'
+        ? 11 * Math.sin(a * 25 + 3 * Math.sin(b * 23)) * Math.sin(b * 28)
+        : 14 * warp * Math.cos(14 * a + 12 * b) + 13 * weft * Math.sin(12 * b - 14 * a);
+      const filament = 6 * Math.sin(a * 47 + b * 43) + 10 * (random() - .5);
+      const marl = 8 * Math.sin(a * 4 + Math.sin(b * 3)) * Math.sin(b * 5);
+      const value = 128 + yarn + filament + marl;
+      const i = 4 * (y * size + x);
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = value;
+      img.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  yarns.set(kind, tile);
+  return tile;
+}
+export function applyWeave(canvas, kind, scale) {
+  const context = canvas.getContext('2d');
+  context.save();
+  context.globalCompositeOperation = 'soft-light';
+  context.globalAlpha = kind === 'fleece' ? .50 : .39;
+  const pitch = scale * (kind === 'fleece' ? 1.33 : 1);
+  context.scale(pitch, pitch);
+  context.fillStyle = context.createPattern(yarnTile(kind), 'repeat');
+  context.fillRect(0, 0, canvas.width / pitch, canvas.height / pitch);
+  context.restore();
+}
+export function fabricRoughness(kind, repeat) {
+  const canvas = document.createElement('canvas'), source = yarnTile(kind);
+  canvas.width = source.width;
+  canvas.height = source.height;
+  const context = canvas.getContext('2d');
+  context.fillStyle = '#fff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.globalAlpha = kind === 'fleece' ? .20 : .32;
+  context.drawImage(source, 0, 0);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(...repeat);
+  return texture;
+}
+export function truckerMeshMask() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 768;
+  canvas.height = 384;
+  const context = canvas.getContext('2d');
+  const { width, height } = canvas;
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, width, height);
+  context.fillStyle = '#000000';
+  context.beginPath();
+  for (let y = 30; y < height - 21; y += 8) {
+    for (let x = 4 + (Math.floor(y / 8) % 2) * 4; x < width; x += 8) {
+      if (x > width * .585 && x < width * .915) continue;
+      const seam = ((x / width - 2 / 3) * 6 + 9) % 1;
+      if (seam > .965 || seam < .035) continue;
+      context.moveTo(x + 2.0, y);
+      context.ellipse(x, y, 2.0, 1.68, 0, 0, Math.PI * 2);
+    }
+  }
+  for (const vent of [.34, .53, .70, .92]) {
+    const x = (1 - vent) * width, y = .47 * height;
+    context.moveTo(x + 2.0, y);
+    context.ellipse(x, y, 2.0, 3.9, 0, 0, Math.PI * 2);
+  }
+  context.fill();
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.anisotropy = 4;
+  return texture;
 }

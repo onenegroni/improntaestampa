@@ -22,12 +22,13 @@ function vnoise(x, y) {
 }
 
 /** Build a parametric surface, optionally clipping the patch along a signed UV boundary. */
-export function surface(nu, nv, fn, { clip = null, wrapU = false, uvFn = null } = {}) {
-  const pos = [], uv = [], idx = [];
+export function surface(nu, nv, fn, { clip = null, wrapU = false, uvFn = null, shade = null } = {}) {
+  const pos = [], uv = [], idx = [], colors = [];
   const addVertex = (u, v) => {
     const id = pos.length / 3;
     pos.push(...fn(u, v));
     uv.push(...(uvFn ? uvFn(u, v) : [u, v]));
+    if (shade) { const value = shade(u, v); colors.push(value, value, value); }
     return id;
   };
   const rowWidth = nu + 1;
@@ -84,6 +85,7 @@ export function surface(nu, nv, fn, { clip = null, wrapU = false, uvFn = null } 
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  if (shade) g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   g.setIndex(idx); g.computeVertexNormals();
   if (wrapU) {
     const n = g.attributes.normal;
@@ -95,6 +97,66 @@ export function surface(nu, nv, fn, { clip = null, wrapU = false, uvFn = null } 
   }
   return g;
 }
+
+// Sample a sewn path once, then assemble its stitches into a single mesh.
+export function trace(segments, sample) {
+  return Array.from({ length: segments + 1 }, (_, index) => sample(index / segments));
+}
+
+export function thread(paths, { pitch = .0043, radius = .00039, normal = null } = {}) {
+  const positions = [], normals = [], indices = [];
+  const sides = 6, rows = 5;
+  for (const points of paths) {
+    const curve = new THREE.CatmullRomCurve3(points.map(point => new THREE.Vector3(...point)));
+    curve.arcLengthDivisions = Math.max(72, points.length * 2);
+    const count = Math.max(1, Math.round(curve.getLength() / pitch));
+    for (let stitch = 0; stitch < count; stitch++) {
+      const start = curve.getPointAt((stitch + .14) / count);
+      const end = curve.getPointAt((stitch + .73) / count);
+      const middle = start.clone().lerp(end, .5);
+      const tangent = end.clone().sub(start).normalize();
+      const lift = new THREE.Vector3(...(normal || [middle.x, .16 * middle.y, middle.z]));
+      lift.addScaledVector(tangent, -lift.dot(tangent)).normalize();
+      if (lift.lengthSq() < .5) {
+        lift.set(0, 1, 0).addScaledVector(tangent, -tangent.y).normalize();
+      }
+      const across = new THREE.Vector3().crossVectors(tangent, lift).normalize();
+      const first = positions.length / 3;
+      for (let row = 0; row < rows; row++) {
+        const t = row / (rows - 1);
+        const arch = Math.sin(t * Math.PI);
+        const center = start.clone().lerp(end, t).addScaledVector(lift, arch * radius * 1.15);
+        const r = radius * (.28 + .72 * arch);
+        for (let side = 0; side < sides; side++) {
+          const angle = side * TAU / sides;
+          const axis = lift.clone().multiplyScalar(Math.cos(angle)).addScaledVector(across, Math.sin(angle));
+          positions.push(center.x + axis.x * r, center.y + axis.y * r, center.z + axis.z * r);
+          normals.push(axis.x, axis.y, axis.z);
+          if (row < rows - 1) {
+            const a = first + row * sides + side, b = first + row * sides + (side + 1) % sides;
+            indices.push(a, b, b + sides, a, b + sides, a + sides);
+          }
+        }
+      }
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geometry.setIndex(indices);
+  return geometry;
+}
+
+function liftFromAxis(point, distance) {
+  const length = Math.hypot(point[0], point[2]) || 1;
+  return [point[0] + point[0] / length * distance, point[1], point[2] + point[2] / length * distance];
+}
+
+export function edgeSeam(sample, v) {
+  return trace(128, u => liftFromAxis(sample(u, v), .00070));
+}
+
+const crease = (distance, width) => Math.exp(-Math.pow(distance / width, 2));
 
 /* ---------------- TORSO ----------------
    A shirt hanging on a dress form: straight drop from chest to hem, defined shoulders that slope ~18deg
@@ -111,6 +173,7 @@ export function torsoFn(o) {
   const kx = o.neckK || 0.35, kz = o.neckKZ || 0.56;
   const drop = o.neckDrop ?? 0.045, slope = o.slope ?? 0.31, yA = 0.04, q0 = o.q0 ?? 0.66;
   const wr = o.wrinkle ?? 1, nx = 2.6;
+  const heavy = o.heavy === true;
   const yN = th => yNeck - drop * Math.pow(Math.max(0, Math.cos(th)), 2.2);
   const fn = (u, v) => {
     const th = (u - 0.25) * TAU, c = Math.cos(th), s = Math.sin(th);
@@ -139,11 +202,33 @@ export function torsoFn(o) {
       * Math.sin(yl * 55 + th * 1.7) * 0.0028;
     const grain = vnoise(th * 6, yl * 15) * 0.00055;
     const edge = sstep(0.016, 0.003, v) * 0.0014;
-    const off = (drape + armpit + waist + grain) * wr + edge;
+    // Off-axis tension falls out from the armhole and gathers toward a hanging hem.
+    const ripple = side * (1 - sstep(-.10, .055, yl));
+    const tuck = .0048 * ripple * (
+      crease(yl + .216 + .053 * s + (ax - .09) * .32, .018)
+      - .65 * crease(yl + .243 + .055 * s + (ax - .09) * .4, .024)
+    );
+    const underarm = -.0043 * side * crease(yl - .061 + .31 * (ax - .15), .024);
+    const hemRoll = .0018 * crease(v - .025, .015);
+    // Long folds hang under their own weight. The shorter compression folds
+    // pull in diagonally from each side; they taper out toward the print area.
+    const loose = sstep(.23, -.31, yl);
+    const front = Math.max(0, c), back = Math.max(0, -c);
+    const ridgeA = ax - (.093 + .039 * loose + .013 * s * yl);
+    const ridgeB = ax - (.055 + .018 * Math.sin(6 * yl + s * .9));
+    const fall = loose * loose * (front * (
+      .0115 * crease(ridgeA, .025) - .0064 * crease(ridgeA + .027, .023)
+      + .0072 * crease(ridgeB, .023) - .0046 * crease(ridgeB + .021, .027)
+    ) + back * (.0075 * crease(ridgeA, .028) - .0065 * crease(ridgeA + .031, .021)));
+    const stress = side * (1 - sstep(-.07, .14, yl)) * (
+      .0108 * crease(yl + .19 + s * .048 + ax * .41, .022)
+      - .0083 * crease(yl + .218 + s * .044 + ax * .36, .021)
+    );
+    const off = (drape + armpit + waist + grain + tuck + underarm + (fall + stress) * (heavy ? .74 : 1.19)) * wr + edge + hemRoll;
     const length = Math.hypot(x, z) || 1;
-    x += x / length * off + 0.0031 * hemWeight * wr;
-    z += z / length * off;
-    y += (Math.sin(th * 4 + 1.15) * 0.003 + Math.sin(th * 7 - 0.5) * 0.0012) * sstep(0.12, 0, v) * wr;
+    x += x / length * off + .0095 * hemWeight * wr - .0021 * Math.sin(yl * 11) * side;
+    z += z / length * off + .005 * hemWeight * s;
+    y += (Math.sin(th * 4 + 1.15) * .0043 + Math.sin(th * 7 - .5) * .0016 + .005 * s) * sstep(.145, 0, v) * wr;
     return [x, y, z];
   };
   // arc-length U: the cross-section is a superellipse, so equal angle steps are NOT equal fabric widths.
@@ -163,9 +248,9 @@ export function torsoFn(o) {
 export function collar(fn, { h = 0.016 } = {}) {
   return surface(160, 10, (u, v) => {
     const p = fn(u, 1); const l = Math.hypot(p[0], p[2]) || 1;
-    const out = Math.sin(v * Math.PI) * .0025 + .001;
-    const up = h * Math.sin(v * Math.PI * .83);
-    const inward = v > .46 ? (v - .46) * .012 : 0;
+    const out = Math.sin(v * Math.PI) * .0032 + .0004;
+    const up = h * Math.sin(v * Math.PI * .92);
+    const inward = sstep(.40, 1, v) * .0048;
     return [p[0] + p[0] / l * (out - inward), p[1] + up - 0.002, p[2] + p[2] / l * (out - inward)];
   }, { wrapU: true });
 }
@@ -175,9 +260,9 @@ export function collar(fn, { h = 0.016 } = {}) {
 export function facing(fn, neck) {
   return surface(160, 10, (u, v) => {
     const [x, y, z] = fn(u, neck ? 1 : 0);
-    const inset = (neck ? 0.08 : 0.026) * Math.sin(v * Math.PI / 2);
-    return [x * (1 - inset), y + (neck ? -0.029 : 0.019) * v, z * (1 - inset)];
-  }, { wrapU: true });
+    const inset = (neck ? .105 : .032) * Math.sin(v * Math.PI / 2);
+    return [x * (1 - inset), y + (neck ? -.047 : .023) * v, z * (1 - inset)];
+  }, { wrapU: true, shade: (u, v) => lerp(.95, neck ? .43 : .68, sstep(.14, 1, v)) });
 }
 
 // A set-in sleeve starts on the same UV boundary that is cut out of the body.
@@ -198,8 +283,8 @@ export function armhole(fn, side, { long = false, tank = false } = {}) {
     return du * du + dv * dv - 1;
   };
   const at = (a, scale) => fn(...param(a, scale));
-  const uv = Array.from({length: 97}, (_, i) => fn.uv(...param(i / 96 * TAU, 1.075)));
-  return { clip, at, uv };
+  const threadPath = trace(70, t => liftFromAxis(at(t * TAU, 1.065), .00085));
+  return { clip, at, threadPath };
 }
 export function sleeve(side, hole, { long = false } = {}) {
   const pts = long
@@ -219,11 +304,19 @@ export function sleeve(side, hole, { long = false } = {}) {
     center.y + front.y * Math.cos(angle) * rz + upper.y * Math.sin(angle) * ry,
     center.z + front.z * Math.cos(angle) * rz + upper.z * Math.sin(angle) * ry,
   ];
+  function sleeveFrame(v) {
+    const row = Math.min(63, Math.floor(v * 64));
+    const fraction = v * 64 - row;
+    const a = frames[row], b = frames[row + 1];
+    if (fraction === 0) return a;
+    if (fraction === 1) return b;
+    return { center: a.center.clone().lerp(b.center, fraction), front: a.front.clone().lerp(b.front, fraction), upper: a.upper.clone().lerp(b.upper, fraction) };
+  }
   const endWidth = long ? .045 : .060;
   const endDepth = long ? .035 : .043;
   const shell = (u, v) => {
     const angle = u * TAU;
-    const row = frames[Math.round(v * 64)];
+    const frame = sleeveFrame(v);
     const folds = sstep(.27, .44, v) * (1 - sstep(.89, 1, v));
     const sideWeight = .25 + .75 * Math.pow(Math.abs(Math.cos(angle)), 1.8);
     const pinch = (
@@ -231,11 +324,16 @@ export function sleeve(side, hole, { long = false } = {}) {
       + Math.sin(v * 17 - 2.4 * Math.sin(angle)) * .38
       + vnoise(v * 11, angle * 1.6) * .19
     ) * folds * sideWeight;
-    const amplitude = long ? .0052 : .0024;
-    const width = lerp(long ? .092 : .087, endWidth, v) + amplitude * pinch;
-    const depth = lerp(long ? .070 : .073, endDepth, v) + amplitude * 1.6 * pinch;
+    const amplitude = long ? .0075 : .0034;
+    const elbow = long ? .0063 * (
+      crease(v - .64 - .095 * Math.cos(angle) + side * .023, .060)
+      - .43 * crease(v - .719 - .089 * Math.cos(angle) + side * .019, .063)
+    ) : .0019 * crease(v - .74 + .11 * Math.cos(angle), .107);
+    const gathers = (long ? .0018 : .0008) * crease(v - .91, .11) * Math.cos(angle * 5 + v * 10);
+    const width = lerp(long ? .092 : .087, endWidth, v) + amplitude * pinch + elbow + gathers;
+    const depth = lerp(long ? .070 : .073, endDepth, v) + amplitude * 1.4 * pinch + elbow * .56 + gathers;
     const root = hole.at(angle, 1.005);
-    const end = outer(row, angle, depth, width);
+    const end = outer(frame, angle, depth, width);
     const fade = sstep(0, long ? .34 : .62, v);
     return root.map((value, i) => lerp(value, end[i], fade));
   };
@@ -250,9 +348,23 @@ export function sleeve(side, hole, { long = false } = {}) {
     return outer({ ...finish, center }, angle, endDepth * radius + roll, endWidth * radius + roll);
   };
   const orientation = u => side < 0 ? 1 - u : u;
+  const ring = (sample, v, lift) => trace(76, u => {
+    const point = sample(u, v);
+    const axis = new THREE.Vector3(...point).sub(finish.center);
+    axis.addScaledVector(finish.tangent, -axis.dot(finish.tangent)).normalize();
+    return [point[0] + axis.x * lift, point[1] + axis.y * lift, point[2] + axis.z * lift];
+  });
   return {
-    shell: surface(96, 64, shell, { wrapU: true, uvFn: (u, v) => [orientation(u), 1 - v] }),
-    trim: surface(96, 14, edge, { wrapU: true, uvFn: (u, v) => [orientation(u), v] }),
+    shell: surface(96, 64, shell, {
+      wrapU: true, uvFn: (u, v) => [orientation(u), 1 - v],
+      shade: (u, v) => 1 - (.11 + .13 * Math.max(0, -Math.sin(TAU * u))) * (1 - sstep(.06, .30, v)),
+    }),
+    trim: surface(96, 18, edge, {
+      wrapU: true, uvFn: (u, v) => [orientation(u), v],
+      shade: (u, v) => 1 - .36 * sstep(.68, 1, v),
+    }),
+    sleeveThread: ring(shell, .972, .00062),
+    trimThread: ring(edge, .22, .00068),
   };
 }
 
@@ -268,23 +380,35 @@ export function boundArmhole(hole) {
 /* Two hood panels form a structured opening and a rounded crown, with a sewn lining. */
 export function hood(fn) {
   const shell = (u, v) => {
-    const th = Math.PI + (u * 2 - 1) * .84 * Math.PI;
-    const neck = fn((th / TAU + .25) % 1, 1);
-    const spread = -Math.cos(Math.PI * u);
-    const arc = Math.pow(Math.sin(Math.PI * u), .86);
-    const rise = Math.pow(v, .78);
-    const crownRise = 1 - Math.pow(1 - v, 2.6);
-    const behind = Math.sin(v * Math.PI) * Math.pow(arc, .69);
-    const edgeX = -spread * (.065 + .078 * arc);
-    const edgeY = .193 + .166 * arc + .012 * spread + .005 * Math.sin(u * Math.PI * 2.6);
-    const edgeZ = .098 - .061 * arc + .016 * spread * arc;
-    const wrinkle = Math.sin(u * Math.PI * 9 + v * 14) * .007 * behind * (1 - v);
-    const fold = (Math.sin(u * Math.PI * 3 + v * 4) * .005 - .006) * arc * (1 - sstep(.05, .46, v));
-    return [
-      lerp(neck[0] * 1.015, edgeX, rise) - spread * .059 * behind,
-      lerp(neck[1] - .002, edgeY, crownRise) + .007 * behind + wrinkle + fold,
-      lerp(neck[2], edgeZ, v) - .126 * behind + wrinkle,
+    const theta = Math.PI + (u * 2 - 1) * .84 * Math.PI;
+    const neck = fn((theta / TAU + .25) % 1, 1);
+    const arch = Math.pow(Math.sin(Math.PI * u), .88);
+    const side = Math.cos(Math.PI * u);
+    const edge = [
+      side * (.055 + .077 * arch),
+      .210 + .169 * arch + .009 * side,
+      .110 - .087 * arch + .005 * side,
     ];
+    const back = [
+      side * (.076 + .091 * arch),
+      neck[1] + .039 * arch - .025,
+      .092 - .285 * arch,
+    ];
+    const crown = [
+      side * (.068 + .104 * arch),
+      .255 + .213 * arch - .005 * side,
+      .097 - .274 * arch,
+    ];
+    const weight = 1 - v;
+    const point = neck.map((value, axis) => value * weight ** 3 + 3 * back[axis] * weight ** 2 * v
+      + 3 * crown[axis] * weight * v ** 2 + edge[axis] * v ** 3);
+    const lowerFold = .0039 * arch * Math.sin(u * TAU * 4 + v * 12.2) * sstep(0, .26, v) * (1 - sstep(.37, .84, v));
+    const crownSeam = .0014 * crease(u - .5, .036) * Math.sin(v * Math.PI);
+    const turnedRim = .0033 * crease(v - .966, .040);
+    point[0] += side * turnedRim * .46;
+    point[1] += lowerFold - crownSeam + arch * turnedRim;
+    point[2] += lowerFold * .55 + turnedRim * .38;
+    return point;
   };
   const lining = (u, v) => {
     const point = shell(u, v);
@@ -303,14 +427,25 @@ export function hood(fn) {
     return outside.map((value, i) => lerp(value, inside[i], depth));
   };
   return {
-    outer: surface(112, 55, shell),
-    inner: surface(112, 55, lining),
+    outer: surface(112, 55, shell, { shade: (u, v) => 1 - .20 * (1 - sstep(.02, .27, v)) }),
+    inner: surface(112, 55, lining, { shade: (u, v) => lerp(.29, .76, sstep(.25, .97, v)) }),
+    crownThread: [.481, .519].map(u => trace(48, t => {
+      const p = shell(u, .13 + t * .82), inside = lining(u, .13 + t * .82);
+      return p.map((value, axis) => value + (value - inside[axis]) * .18);
+    })),
+    insideSeam: surface(8, 62, (u, v) => {
+      const s = .484 + u * .032, t = .12 + v * .837;
+      const base = lining(s, t);
+      const outer = shell(s, t);
+      const rise = .13 + .22 * Math.sin(u * Math.PI) * Math.sin(v * Math.PI);
+      return base.map((value, axis) => value + (value - outer[axis]) * rise);
+    }, { shade: (u, v) => lerp(.23, .63, sstep(.11, .96, v)) }),
     edges: [
       surface(112, 5, (u, depth) => join(u, 1, depth)),
       surface(60, 4, (v, depth) => join(0, v, depth)),
       surface(60, 4, (v, depth) => join(1, v, depth)),
     ],
-    eyelet: side => shell(side < 0 ? .92 : .08, .86),
+    eyelet: side => shell(side < 0 ? .916 : .084, .91),
   };
 }
 
@@ -341,15 +476,20 @@ export function short() {
       return [lerp(join[0], edge[0], blend), lerp(join[1], edge[1], v), lerp(join[2], edge[2], blend)];
     };
     const uv = (u, v) => [.25 + side * u, .69 * (1 - v)];
-    return [
-      surface(96, 50, run, {wrapU: true, uvFn: uv}),
+    const seam = [.932, .958].map(v => trace(68, u => {
+      const base = run(u, v), angle = u * TAU;
+      return [base[0] + side * Math.sin(angle) * .00064, base[1], base[2] + Math.cos(angle) * .00064];
+    }));
+    const shells = [
+      surface(96, 50, run, {wrapU: true, uvFn: uv, shade: (u, v) => 1 - .18 * Math.max(0, -Math.sin(TAU * u)) * (1 - sstep(.1, .68, v))}),
       surface(96, 6, (u, v) => { const p = run(u, 1, .0035 * v); p[1] += .010 * v; return p; }, {wrapU: true, uvFn: (u, v) => uv(u, 1 - v * .02)}),
     ];
+    return {shells, seam};
   };
-  const band = surface(136, 12, (u, v) => {
+  const band = surface(136, 16, (u, v) => {
     const th = (u - .25) * TAU;
     const gather = (.6 + .4 * Math.sin(v * Math.PI)) * (.0013 * Math.sin(th * 35) + .0007 * Math.cos(th * 49));
-    const roll = .0011 * Math.sin(v * Math.PI);
+    const roll = .0011 * Math.sin(v * Math.PI) + .00065 * Math.cos(v * TAU * 2);
     return [(0.173 + roll + gather) * Math.sin(th), -.001 + .035 * v, (0.108 + roll + gather) * Math.cos(th)];
   }, {wrapU: true});
   return { top, left: leg(-1), right: leg(1), band };
@@ -359,6 +499,14 @@ export function flagGeo(w = 1.2, h = .8) {
   const geo = new THREE.PlaneGeometry(w, h, 78, 40);
   geo.translate(w / 2, 0, 0);
   geo.userData.width = w;
+  const uv = geo.attributes.uv, shade = [];
+  for (let i = 0; i < uv.count; i++) {
+    const u = uv.getX(i), v = uv.getY(i);
+    const folded = Math.min(v, 1 - v);
+    const value = 1 - .16 * crease(u, .015) - .065 * crease(folded, .012);
+    shade.push(value, value, value);
+  }
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(shade, 3));
   waveFlag(geo, 0);
   return geo;
 }
@@ -369,8 +517,9 @@ export function waveFlag(geo, t) {
   for (let i = 0; i < positions.count; i++) {
     const x = b[i * 3], y = b[i * 3 + 1], k = clamp(x / w, 0, 1);
     const softness = Math.pow(k, .83);
-    const z = softness * (.062 * Math.sin(k * 9 - t * 1.52 + y * 2.3) + .016 * Math.sin(k * 17 - t * 2.12 + y * 6.7));
-    const fall = k * k * (.054 + .016 * Math.sin(t * .62 - k * 2));
+    const ripple = .009 * Math.sin(k * 22 - t * 2.35 + y * 11.2);
+    const z = softness * (.063 * Math.sin(k * 8.4 - t * 1.31 + y * 2.8) + .020 * Math.sin(k * 15.2 - t * 2.05 + y * 6.1) + ripple);
+    const fall = k * k * (.062 + .019 * Math.sin(t * .57 - k * 2));
     positions.setXYZ(i, x - .040 * k * k, y - fall + softness * .018 * Math.sin(k * 7.3 - t * 1.21), z);
   }
   positions.needsUpdate = true;
@@ -400,7 +549,10 @@ export function cap() {
     if (inner) { point[0] *= .978; point[2] *= .977; point[1] -= .002; }
     return point;
   };
-  const crown = surface(156, 58, crownSurface, {wrapU: true, uvFn: (u, v) => [1 - u, lerp(cut(u), 1, v)]});
+  const crown = surface(156, 58, crownSurface, {
+    wrapU: true, uvFn: (u, v) => [1 - u, lerp(cut(u), 1, v)],
+    shade: (u, v) => 1 - .15 * (1 - sstep(.02, .21, v)),
+  });
   const inner = surface(130, 14, (u, v) => crownSurface(u, v * .28, true), {wrapU: true});
   const band = surface(156, 8, (u, v) => {
     const outer = crownSurface(u, .065 * v);
@@ -420,9 +572,11 @@ export function cap() {
     ];
   };
   const visorTop = surface(98, 26, visorFn);
-  const visorBottom = surface(98, 16, (u, v) => visorFn(u, v, .0035));
+  const visorBottom = surface(98, 16, (u, v) => visorFn(u, v, .0042), {
+    shade: (u, v) => lerp(.47, .80, sstep(.03, .95, v)),
+  });
   const visorEdge = surface(98, 6, (u, v) => {
-    const point = visorFn(u, 1, .0035 * v);
+    const point = visorFn(u, 1, .0042 * v);
     point[2] += .0013 * Math.sin(v * Math.PI);
     return point;
   });
@@ -438,7 +592,24 @@ export function cap() {
     button.translate(x, .006, -RZ + Math.abs(x) * .29 - .0006);
     return button;
   });
-  return { crown, inner, visorTop, visorBottom, visorEdge, button, band, snaps, closure };
+  const seams = CAP_SEAMS.map(seam => trace(32, t => {
+    const point = crownAt((2 - seam) % 1, .09 + .85 * t);
+    return liftFromAxis(point, .00068);
+  }));
+  const brimThread = [.58, .69, .80, .91].map(v => trace(40, t => {
+    const point = visorFn(.08 + t * .84, v);
+    point[1] += .00066;
+    return point;
+  }));
+  const vents = [.34, .53, .70, .92].map(u => {
+    const p = crownAt(u, .53);
+    const ring = new THREE.TorusGeometry(.00185, .00047, 6, 14);
+    const axis = new THREE.Vector3(p[0], p[1] * .54, p[2]).normalize();
+    ring.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), axis));
+    ring.translate(...p.map((coordinate, index) => coordinate + axis.getComponent(index) * .00070));
+    return ring;
+  });
+  return { crown, inner, visorTop, visorBottom, visorEdge, button, band, snaps, closure, seams, brimThread, vents };
 }
 
 export function zipperParts(fn) {
@@ -473,7 +644,11 @@ export function zipperParts(fn) {
   teeth.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   teeth.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
   teeth.setIndex(index);
-  return {tape, teeth, top: track(.995), bottom: track(.012)};
+  const seams = [-1, 1].map(side => trace(76, t => {
+    const [x, y, z] = track(.035 + t * .95);
+    return [x + side * .0083, y, z + .0045];
+  }));
+  return {tape, teeth, top: track(.995), bottom: track(.012), seams};
 }
 export function zipperPull() {
   const shape = new THREE.Shape();
@@ -495,20 +670,28 @@ function pocketUV(side) { // side -1 = left half (u < .25), +1 = right half
   const uo = side < 0 ? 0.155 : 0.345, ui = side < 0 ? 0.2405 : 0.2595;
   return (s, t) => { const inset = 0.055 * smooth(t) * (1 - Math.sin(t * Math.PI * 0.5) * 0.25); const a = uo - side * inset; return [lerp(a, ui, s), lerp(PK.vB, PK.vT, t)]; };
 }
-export function pocketOutline(fn) {
-  return [-1, 1].map(side => { const UV = pocketUV(side), out = [];
-    for (let i = 0; i <= 24; i++) out.push(fn.uv(...UV(0, i / 24)));
-    for (let i = 0; i <= 12; i++) out.push(fn.uv(...UV(i / 12, 1)));
-    return out; });
-}
 export function pocket(fn, side) {
-  const UV = pocketUV(side);
-  return surface(40, 26, (s, t) => {
-    const [u, v] = UV(s, t), p = fn(u, v), l = Math.hypot(p[0], p[2]) || 1;
-    const lip = .0037 * Math.pow(1 - s, 5) * Math.sin(Math.PI * t);
-    const volume = .0045 * Math.sin(Math.PI * s) * Math.sin(Math.PI * t);
-    const puff = .0008 + lip + volume;
-    return [p[0] + p[0] / l * puff, p[1], p[2] + p[2] / l * puff];
-  }, { uvFn: (s, t) => { const [u, v] = UV(s, t); return fn.uv(u, v); } });
+  const uv = pocketUV(side);
+  const panel = (s, t, offset = 0) => {
+    const [u, v] = uv(s, t);
+    const raised = .0011 + .0046 * Math.pow(1 - s, 4) * Math.sin(Math.PI * t)
+      + .0041 * Math.sin(Math.PI * s) * Math.sin(Math.PI * t)
+      + .0015 * crease(s - .044, .032);
+    return liftFromAxis(fn(u, v), raised + offset);
+  };
+  const shell = surface(54, 36, panel, {
+    uvFn: (s, t) => fn.uv(...uv(s, t)),
+    shade: (s, t) => 1 - .13 * crease(s - .021, .048) * Math.sin(Math.PI * t),
+  });
+  const edge = surface(60, 6, (t, v) => {
+    const outside = panel(0, t), inside = fn(...uv(0, t));
+    return outside.map((value, i) => lerp(value, inside[i], v));
+  }, { uvFn: t => fn.uv(...uv(0, t)), shade: (t, v) => lerp(.92, .44, v) });
+  const stitches = [
+    trace(45, t => panel(.064, .045 + .90 * t, .00070)),
+    trace(32, s => panel(s, .93, .00066)),
+    trace(32, s => panel(s, .068, .00066)),
+  ];
+  return { shell, edge, stitches };
 }
 export { vnoise, TAU, lerp, clamp };

@@ -31,29 +31,29 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   const dprCap = Math.min(window.devicePixelRatio || 1, isMobile ? 2 : 1.5), dprMin = lowPower ? 0.6 : isMobile ? 1 : 0.75; // phones: crisp 2x live view
   let dpr = lowPower ? Math.min(0.75, dprCap) : dprCap;
   renderer.setPixelRatio(dpr);
-  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.01;
+  renderer.toneMapping = THREE.AgXToneMapping; renderer.toneMappingExposure = 1.12;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap; renderer.shadowMap.autoUpdate = false;
   canvasHost.appendChild(renderer.domElement);
   const scene = new THREE.Scene();
-  scene.environmentIntensity = 0.66;
   const cam = new THREE.PerspectiveCamera(26, 1, 0.05, 30);
-  const key = new THREE.DirectionalLight(0xfff8f0, 2.35);
-  key.position.set(-2.4, 3.1, 2.7);
+  const key = new THREE.DirectionalLight(0xfff7ef, 2.17);
+  key.position.set(-2.8, 3.7, 3.9);
   key.castShadow = true;
   const LIVE_SM = lowPower ? 512 : 1024;
   key.shadow.mapSize.set(LIVE_SM, LIVE_SM);
   Object.assign(key.shadow.camera, { left: -1.15, right: 1.15, top: 1.15, bottom: -1.15, near: 0.5, far: 8 });
   key.shadow.radius = 5;
-  key.shadow.bias = -0.0003;
-  key.shadow.normalBias = 0.007;
+  key.shadow.bias = -.00021;
+  key.shadow.normalBias = .0044;
   scene.add(key);
-  const rim = new THREE.DirectionalLight(0xf2f6ff, 1.40);
+  const rim = new THREE.DirectionalLight(0xf4f7ff, 1.04);
   rim.position.set(1.8, 1.55, -2.6);
   scene.add(rim);
-  const fill = new THREE.DirectionalLight(0xfffbf7, 0.41);
+  const fill = new THREE.DirectionalLight(0xfffcf6, .52);
   fill.position.set(2.2, 0.5, 2);
   scene.add(fill);
+  scene.add(new THREE.HemisphereLight(0xf8f7f2, 0x8b8374, .40));
 
   const spin = new THREE.Group(); scene.add(spin);
   const anim = new THREE.Group(); spin.add(anim);
@@ -62,11 +62,18 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   const darkM = new THREE.MeshStandardMaterial({ color: 0x262823, roughness: 0.65, metalness: 0.1 });
 
   const fabrics = {
-    deportiva: { normal: T.knitNormal(192, 'mesh'), repeat: [21, 11], roughness: 0.78, sheen: 0.38, sheenRoughness: 0.65, normalScale: 0.47, spec: 0.24 },
-    modal: { normal: T.knitNormal(192, 'jersey'), repeat: [21, 11], roughness: 0.9, sheen: 0.55, sheenRoughness: 0.80, normalScale: 0.33, spec: 0.16 },
-    frizado: { normal: T.knitNormal(192, 'fleece'), repeat: [16, 9], roughness: 0.94, sheen: 0.43, sheenRoughness: 0.87, normalScale: 0.45, spec: 0.11 },
+    deportiva: { normal: T.knitNormal(192, 'mesh'), repeat: [13, 8], roughness: 0.80, sheen: 0.38, sheenRoughness: 0.65, normalScale: 0.55, spec: 0.24 },
+    modal: { normal: T.knitNormal(192, 'jersey'), repeat: [13, 8], roughness: 0.90, sheen: 0.50, sheenRoughness: 0.80, normalScale: 0.43, spec: 0.16 },
+    frizado: { normal: T.knitNormal(192, 'fleece'), repeat: [12, 7], roughness: 0.94, sheen: 0.38, sheenRoughness: 0.87, normalScale: 0.52, spec: 0.11 },
   };
-  Object.values(fabrics).forEach(fabric => fabric.normal.repeat.set(...fabric.repeat));
+  const finishKinds = { deportiva: 'mesh', modal: 'jersey', frizado: 'fleece' };
+  for (const [key, fabric] of Object.entries(fabrics)) {
+    fabric.kind = finishKinds[key];
+    fabric.normal.repeat.set(...fabric.repeat);
+    fabric.roughMap = T.fabricRoughness(fabric.kind, [12, 8]);
+  }
+  const twillRoughness = T.fabricRoughness('twill', [11, 7]);
+  let capNet = null;
   const twill = T.knitNormal(160, 'twill'); twill.repeat.set(21, 11);
   const rib = T.knitNormal(128, 'rib'); rib.repeat.set(13, 2);
   const texes = {};
@@ -94,14 +101,21 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   function own(material) { temporaryMaterials.add(material); return material; }
   function fabricMat(map, { ribbed = false, side = THREE.DoubleSide } = {}) {
     const f = fabrics[state.tela] || fabrics.deportiva;
-    const values = { map, side, roughness: f.roughness, normalMap: ribbed ? rib : f.normal, normalScale: new THREE.Vector2(f.normalScale, f.normalScale) };
+    const values = { map, side, roughness: f.roughness, roughnessMap: f.roughMap, envMapIntensity: .56, vertexColors: true, normalMap: ribbed ? rib : f.normal, normalScale: new THREE.Vector2(f.normalScale, f.normalScale) };
     const m = own(lowPower
       ? new THREE.MeshStandardMaterial(values)
       : new THREE.MeshPhysicalMaterial({ ...values, sheen: f.sheen, sheenRoughness: f.sheenRoughness, sheenColor: new THREE.Color(0xc2bdb6), specularIntensity: f.spec }));
     return m;
   }
   function colorMat(hex, opts) { const m = fabricMat(null, { ribbed: true, ...opts }); m.color.set(hex); return m; }
-  const mesh = (geo, mat) => { const m = new THREE.Mesh(geo, mat); m.castShadow = true; m.receiveShadow = true; return m; };
+  function mesh(geometry, material) {
+    if (material.vertexColors && !geometry.hasAttribute('color')) {
+      geometry.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(geometry.attributes.position.count * 3).fill(1), 3));
+    }
+    const object = new THREE.Mesh(geometry, material);
+    object.castShadow = object.receiveShadow = true;
+    return object;
+  }
 
   let parts = {}, flag = null, bbox = new THREE.Box3(), pbox = new THREE.Box3(), fitMode = null, hostH = 1;
   const vOf = y => { const { yHem, yS } = G.TORSO; return G.clamp(0.8 * (y - yHem) / (yS - yHem), 0, 1); };
@@ -116,13 +130,14 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       neckDrop: tank ? .101 : long ? .046 : .050,
       neckKZ: tank ? .66 : .63,
       slope: tank ? .24 : .33,
+      heavy: long,
       depth: long ? .014 : -.008,
       width: long ? [[-.34,.205],[-.24,.215],[-.06,.223],[.11,.219],[.2,.216]]
         : [[-.34,.197],[-.21,.194],[-.04,.198],[.12,.208],[.2,.213]],
     };
     const fn = G.torsoFn(options);
     const holes = [-1, 1].map(side => G.armhole(fn, side, {long, tank}));
-    const cut = {fn, holes, pocket: long ? G.pocketOutline(fn) : null};
+    const cut = {fn, holes};
     tailoring.set(kind, cut);
     return cut;
   }
@@ -131,95 +146,148 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   const pullMetal = new THREE.MeshStandardMaterial({ color: 0x555453, metalness: .58, roughness: .31 });
   const zipTeeth = new THREE.MeshStandardMaterial({ color: 0x2a2928, metalness: .16, roughness: .52 });
   const strapMaterial = new THREE.MeshStandardMaterial({ color: 0x262622, roughness: .83, side: THREE.DoubleSide });
-  const roughHardware = new THREE.MeshStandardMaterial({ color: 0x989990, metalness: .64, roughness: .46 });
+  const roughHardware = new THREE.MeshStandardMaterial({ color: 0xa3a29c, metalness: .69, roughness: .38 });
+  const zipThread = new THREE.MeshStandardMaterial({ color: 0x44413e, roughness: .96, envMapIntensity: .24 });
+
+  function seamMaterial(name) {
+    const material = own(new THREE.MeshStandardMaterial({
+      color: '#66615d', roughness: .96, envMapIntensity: .28,
+    }));
+    parts[name] = material;
+    return material;
+  }
+
+  function addThread(group, paths, material, options) {
+    const sewn = new THREE.Mesh(G.thread(paths, options), material);
+    // Needlework is too fine to put its own noise into the studio shadow map.
+    sewn.receiveShadow = true;
+    group.add(sewn);
+  }
 
   function buildTop(kind, yOff = 0) {
-    const grp = new THREE.Group();
-    grp.position.y = yOff;
+    const group = new THREE.Group();
+    group.position.y = yOff;
     const tank = kind === 'musculosa', long = kind === 'campera';
-    const {fn, holes} = getTailoring(kind);
+    const { fn, holes } = getTailoring(kind);
+    const cut = (u, v) => Math.min(holes[0].clip(u, v), holes[1].clip(u, v));
     const body = G.surface(lowPower ? 190 : 264, lowPower ? 132 : 174, fn, {
       wrapU: true,
-      clip: (u, v) => Math.min(holes[0].clip(u, v), holes[1].clip(u, v)),
+      clip: cut,
       uvFn: fn.uv,
+      shade: (u, v) => {
+        const arm = Math.exp(-Math.max(0, cut(u, v)) * 4.6);
+        const lowerArm = 1 - THREE.MathUtils.smoothstep(v, .68, .93);
+        const lip = 1 - THREE.MathUtils.smoothstep(v, 0, .12);
+        return 1 - (.064 + .122 * lowerArm) * arm - lip * .070;
+      },
     });
-    const tm = parts.torso = fabricMat(texes.torso);
+    const bodyMaterial = parts.torso = fabricMat(texes.torso);
     const trim = parts.punos = colorMat(state.colors.punos);
     const facing = parts.facing = fabricMat(null);
-    grp.add(mesh(body, tm), mesh(G.facing(fn, !long), facing));
-    if (!long) grp.add(mesh(G.facing(fn, false), facing), mesh(G.collar(fn, {h: tank ? .009 : .011}), trim));
+    group.add(mesh(body, bodyMaterial));
+    for (const atNeck of [true, false]) {
+      const inside = mesh(G.facing(fn, atNeck), facing);
+      inside.castShadow = false;
+      group.add(inside);
+    }
+    if (!long) group.add(mesh(G.collar(fn, { h: tank ? .009 : .013 }), trim));
 
+    const bodySeams = holes.map(hole => hole.threadPath);
+    const trimSeams = [];
+    if (!long) {
+      bodySeams.push(...[.026, .042].map(v => G.edgeSeam(fn, v)));
+      bodySeams.push(G.edgeSeam(fn, .976));
+    }
     if (tank) {
-      for (const hole of holes) grp.add(mesh(G.boundArmhole(hole), trim));
+      for (const hole of holes) group.add(mesh(G.boundArmhole(hole), trim));
     } else {
       const sleeveMaterial = parts.sleeve = fabricMat(texes.sleeve);
+      const sleeveSeams = [];
       for (const [i, side] of [-1, 1].entries()) {
-        const arm = G.sleeve(side, holes[i], {long});
-        grp.add(mesh(arm.shell, sleeveMaterial), mesh(arm.trim, trim));
+        const arm = G.sleeve(side, holes[i], { long });
+        group.add(mesh(arm.shell, sleeveMaterial), mesh(arm.trim, trim));
+        sleeveSeams.push(arm.sleeveThread);
+        trimSeams.push(arm.trimThread);
       }
+      addThread(group, sleeveSeams, seamMaterial('sleeveThread'), { radius: .00042 });
     }
+
     if (long) {
       const hood = G.hood(fn);
-      const hoodMaterial = parts.hood = fabricMat(texes.hood, {side: THREE.FrontSide});
+      const hoodMaterial = parts.hood = fabricMat(texes.hood, { side: THREE.FrontSide });
       const lining = parts.lining = fabricMat(null);
       const interior = mesh(hood.inner, lining);
       interior.castShadow = false;
-      grp.add(mesh(hood.outer, hoodMaterial), interior, ...hood.edges.map(geo => mesh(geo, lining)));
+      const seamTape = mesh(hood.insideSeam, lining);
+      seamTape.castShadow = false;
+      group.add(mesh(hood.outer, hoodMaterial), interior, seamTape, ...hood.edges.map(geo => mesh(geo, lining)));
+      addThread(group, hood.crownThread, seamMaterial('hoodThread'), { pitch: .0036, radius: .00046 });
       const waistShape = (u, v) => {
-        const pt = fn(u, 0);
-        const roll = Math.sin(v * Math.PI) * .009;
-        const inset = .951 + .053 * v + roll;
-        return [pt[0] * inset, pt[1] - .048 + v * .050, pt[2] * inset];
+        const point = fn(u, 0);
+        const roll = .009 * Math.sin(v * Math.PI);
+        const gather = .0040 * Math.cos(u * G.TAU * 30) * Math.sin(v * Math.PI) ** 2;
+        const inset = .949 + .054 * v + roll + gather;
+        return [point[0] * inset, point[1] - .048 + v * .050, point[2] * inset];
       };
-      grp.add(mesh(G.surface(160, 14, waistShape, {wrapU: true}), trim));
+      group.add(mesh(G.surface(160, 16, waistShape, {
+        wrapU: true, shade: (u, v) => 1 - .13 * Math.pow(1 - v, 3),
+      }), trim));
+      trimSeams.push(G.edgeSeam(waistShape, .78));
       const zipper = G.zipperParts(fn);
       const tape = own(new THREE.MeshStandardMaterial({
         color: 0x1c1d1b, roughness: .93, normalMap: rib,
         normalScale: new THREE.Vector2(.25, .25), side: THREE.DoubleSide,
       }));
-      grp.add(mesh(zipper.tape, tape), mesh(zipper.teeth, zipTeeth));
+      group.add(mesh(zipper.tape, tape), mesh(zipper.teeth, zipTeeth));
+      addThread(group, zipper.seams, zipThread, { pitch: .0034, radius: .00042 });
       const [x, y, z] = zipper.top;
-      const slider = mesh(new THREE.BoxGeometry(.010, .012, .005), pullMetal);
+      const slider = mesh(new THREE.BoxGeometry(.0095, .012, .005), pullMetal);
       slider.position.set(x, y - .005, z + .007);
-      grp.add(slider);
+      group.add(slider);
       const pull = mesh(G.zipperPull(), pullMetal);
       pull.position.set(x, y - .008, z + .011);
       pull.rotation.x = -.18;
-      hangs.push({node: pull, rest: -.18, strength: .12, phase: 0});
-      grp.add(pull);
+      hangs.push({ node: pull, rest: -.18, strength: .12, phase: 0 });
+      group.add(pull);
       const stop = mesh(new THREE.BoxGeometry(.008, .004, .004), zipTeeth);
       stop.position.set(zipper.bottom[0], zipper.bottom[1], zipper.bottom[2] + .004);
-      grp.add(stop);
+      group.add(stop);
 
       for (const side of [-1, 1]) {
-        grp.add(mesh(G.pocket(fn, side), tm));
+        const pocket = G.pocket(fn, side);
+        group.add(mesh(pocket.shell, bodyMaterial), mesh(pocket.edge, bodyMaterial));
+        bodySeams.push(...pocket.stitches);
         const eyelet = new THREE.Vector3(...hood.eyelet(side));
-        const ring = mesh(new THREE.TorusGeometry(.0035, .0008, 8, 22), roughHardware);
+        const ring = mesh(new THREE.TorusGeometry(.0040, .00092, 10, 24), roughHardware);
         ring.position.copy(eyelet).add(new THREE.Vector3(0, 0, .0016));
         ring.rotation.x = -.24;
-        grp.add(ring);
-        // The grommet is the fixed pivot. Only the cord and its ferrule swing.
+        group.add(ring);
+
+        // The grommet is the fixed pivot. The braiding and metal aglet move with the cord.
         const knot = new THREE.Group();
         knot.position.copy(eyelet);
         const length = .133 + side * .009;
-        const end = new THREE.Vector3(side * .012, -length, .067);
+        const end = new THREE.Vector3(side * .012, -length, .038);
         const cord = new THREE.CatmullRomCurve3([
           new THREE.Vector3(0, 0, .001),
-          new THREE.Vector3(side * -.008, -.032, .030),
-          new THREE.Vector3(side * .008, -.077, .060),
+          new THREE.Vector3(side * -.008, -.032, .020),
+          new THREE.Vector3(side * .008, -.077, .034),
           end,
         ]);
         const cordMaterial = parts.cord || (parts.cord = colorMat(state.colors.punos));
-        knot.add(mesh(new THREE.TubeGeometry(cord, 38, .00225, 8), cordMaterial));
-        const tip = mesh(new THREE.CylinderGeometry(.0024, .0024, .012, 12), roughHardware);
-        tip.position.copy(end).add(new THREE.Vector3(0, -.004, .001));
+        const braided = new THREE.TubeGeometry(cord, 46, .00225, 10);
+        knot.add(mesh(braided, cordMaterial));
+        const tip = mesh(new THREE.CylinderGeometry(.00235, .00215, .013, 14), roughHardware);
+        tip.position.copy(end).add(new THREE.Vector3(0, -.005, .0005));
         tip.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), cord.getTangent(1).negate());
         knot.add(tip);
-        hangs.push({node: knot, rest: 0, strength: .16, phase: side * .32});
-        grp.add(knot);
+        hangs.push({ node: knot, rest: 0, strength: .16, phase: side * .32 });
+        group.add(knot);
       }
     }
-    return grp;
+    addThread(group, bodySeams, seamMaterial('bodyThread'), { radius: .00043 });
+    if (trimSeams.length) addThread(group, trimSeams, seamMaterial('trimThread'), { pitch: .0038 });
+    return group;
   }
 
   function buildShort(yOff) {
@@ -228,8 +296,9 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     group.position.y = yOff;
     const numbered = parts.short = fabricMat(texes.short);
     const plain = parts.shortPlain = fabricMat(texes.shortPlain);
-    group.add(mesh(garment.top, plain), ...garment.left.map(geo => mesh(geo, plain)));
-    group.add(...garment.right.map(geo => mesh(geo, numbered)), mesh(garment.band, parts.punos));
+    group.add(mesh(garment.top, plain), ...garment.left.shells.map(geo => mesh(geo, plain)));
+    group.add(...garment.right.shells.map(geo => mesh(geo, numbered)), mesh(garment.band, parts.punos));
+    addThread(group, [...garment.left.seam, ...garment.right.seam], parts.bodyThread, { radius: .00041 });
     return group;
   }
 
@@ -237,9 +306,9 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   contactCanvas.width = contactCanvas.height = 128;
   const contactContext = contactCanvas.getContext('2d');
   const contactGradient = contactContext.createRadialGradient(64, 64, 0, 64, 64, 64);
-  contactGradient.addColorStop(0, 'rgba(25,36,28,.29)');
-  contactGradient.addColorStop(.41, 'rgba(29,40,29,.13)');
-  contactGradient.addColorStop(1, 'rgba(31,41,34,0)');
+  contactGradient.addColorStop(0, 'rgba(38,31,27,.33)');
+  contactGradient.addColorStop(.41, 'rgba(42,36,30,.14)');
+  contactGradient.addColorStop(1, 'rgba(42,36,30,0)');
   contactContext.fillStyle = contactGradient;
   contactContext.fillRect(0, 0, 128, 128);
   const contactTexture = new THREE.CanvasTexture(contactCanvas);
@@ -290,11 +359,21 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       const cap = new THREE.Group();
       cap.rotation.x = .08;
       const crown = parts.cap = fabricMat(texes.cap);
+      if (!lowPower) {
+        capNet ||= T.truckerMeshMask();
+        crown.alphaMap = capNet;
+        crown.alphaTest = .43;
+        crown.alphaToCoverage = true;
+      }
       const visor = parts.visor = fabricMat(texes.visor);
       const trim = parts.punos = colorMat(state.colors.punos);
       cap.add(mesh(shape.crown, crown), mesh(shape.inner, strapMaterial), mesh(shape.band, trim), mesh(shape.button, trim));
       cap.add(mesh(shape.visorTop, visor), mesh(shape.visorBottom, visor), mesh(shape.visorEdge, visor));
       cap.add(mesh(shape.snaps, strapMaterial), ...shape.closure.map(geo => mesh(geo, strapMaterial)));
+      const seams = seamMaterial('bodyThread');
+      cap.add(...shape.vents.map(geo => mesh(geo, seams)));
+      addThread(cap, shape.seams, seams, { pitch: .0021, radius: .00031 });
+      addThread(cap, shape.brimThread, seamMaterial('sleeveThread'), { pitch: .0024, radius: .00032, normal: [0, 1, 0] });
       product.add(cap);
     }
     spin.updateMatrixWorld(true);
@@ -360,15 +439,20 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   function drawInto(get) {
     const st = state, P = st.producto, need = NEEDS[P] || [];
     if (need.includes('torso')) {
-      const {pocket, holes} = getTailoring(P === 'conjunto' ? 'remera' : P);
-      T.torsoCanvas(get('torso'), st, { vOf, product: P, pocket, shoulderSeams: holes.map(hole => hole.uv) });
+      T.torsoCanvas(get('torso'), st, { vOf, product: P });
     }
     if (need.includes('sleeve')) T.sleeveCanvas(get('sleeve'), st, { stripe: P !== 'campera' });
     if (need.includes('hood')) T.hoodCanvas(get('hood'), st);
     if (need.includes('short')) T.shortCanvas(get('short'), st, get('shortPlain'));
     if (need.includes('flag')) T.flagCanvas(get('flag'), st);
     if (need.includes('cap')) T.capCanvas(get('cap'), st, G.CAP_SEAMS);
-    if (need.includes('visor')) T.visorCanvas(get('visor'), st);
+    if (need.includes('visor')) T.plainCanvas(get('visor'), st, 'mangas');
+    const fixed = P === 'gorra' || P === 'bandera';
+    const weave = fixed ? 'twill' : (fabrics[st.tela] || fabrics.deportiva).kind;
+    for (const name of need) {
+      const canvas = get(name);
+      T.applyWeave(canvas, weave, canvas.width / TEX[name][0]);
+    }
     return need;
   }
   function matTargets() {
@@ -376,17 +460,28 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     const list = [];
     if (parts.punos) list.push([parts.punos.color, new THREE.Color(st.colors.punos)]);
     if (parts.cord) list.push([parts.cord.color, new THREE.Color(st.colors.punos)]);
-    if (parts.lining) list.push([parts.lining.color, new THREE.Color(st.colors.capucha).lerp(new THREE.Color('#a6a197'), .22)]);
-    if (parts.facing) list.push([parts.facing.color, new THREE.Color(st.colors.cuerpo).multiplyScalar(0.58)]);
+    if (parts.lining) list.push([parts.lining.color, new THREE.Color(st.colors.capucha).lerp(new THREE.Color('#847d73'), .07).multiplyScalar(.77)]);
+    if (parts.facing) list.push([parts.facing.color, new THREE.Color(st.colors.cuerpo).multiplyScalar(.71)]);
+    const seamZones = { bodyThread: 'cuerpo', sleeveThread: 'mangas', trimThread: 'punos', hoodThread: 'capucha' };
+    for (const [key, zone] of Object.entries(seamZones)) {
+      if (!parts[key]) continue;
+      const base = st.colors[zone];
+      const color = new THREE.Color(base);
+      if (T.lum(base) < .15) color.lerp(new THREE.Color('#a9a19b'), .25);
+      else color.multiplyScalar(.66);
+      list.push([parts[key].color, color]);
+    }
     Object.values(parts).forEach(material => {
       if (!material.normalMap) return;
-      material.roughness = f.roughness;
+      const accessory = material === parts.cap || material === parts.visor || material === parts.flag;
+      material.roughness = accessory ? .91 : f.roughness;
+      material.roughnessMap = accessory ? twillRoughness : f.roughMap;
       if (material.isMeshPhysicalMaterial) {
         material.sheen = f.sheen;
         material.specularIntensity = f.spec;
         material.sheenRoughness = f.sheenRoughness;
       }
-      if (material.normalMap !== rib) material.normalMap = (material === parts.cap || material === parts.visor || material === parts.flag) ? twill : f.normal;
+      if (material.normalMap !== rib) material.normalMap = accessory ? twill : f.normal;
       const grain = material === parts.flag ? .20 : material === parts.cap || material === parts.visor ? .30 : f.normalScale;
       material.normalScale.set(grain, grain);
     });
@@ -495,7 +590,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   function emit() { listeners.forEach(f => f(view)); }
 
   const clock = new THREE.Clock(); let running = true, visible = true, inited = false, shadowDirty = true;
-  const gl2 = renderer.capabilities.isWebGL2 ? renderer.getContext() : null; let fence = null, fenceT = 0, lastWhy = '';
+  const gl2 = lowPower && renderer.capabilities.isWebGL2 ? renderer.getContext() : null; let fence = null, fenceT = 0, lastWhy = '';
   let lastFlagFrame = -1;
   let lastRender = 0, frameN = 0, ema = 16, slowFor = 0, fastFor = 0;
   function wake() { dirty = true; }
@@ -546,7 +641,12 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   // staged init: yield between heavy steps so page scrolling / compositing never stalls
   const ready = (async () => {
     resize(); await nextFrame();
-    const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture; pm.dispose(); await nextFrame();
+    const pm = new THREE.PMREMGenerator(renderer);
+    const studioRoom = new RoomEnvironment();
+    scene.environment = pm.fromScene(studioRoom, .075).texture;
+    studioRoom.dispose();
+    pm.dispose();
+    await nextFrame();
     spin.rotation.y = view.targetYaw;
     inited = true; build(); view.snap = true; await nextFrame();
     try { if (renderer.compileAsync) await renderer.compileAsync(scene, cam); } catch (e) { }
@@ -557,7 +657,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   ready.catch(e => { console.warn(e); onError && onError(e); });
 
   // ---------- high-res render ----------
-  const bgCv = document.createElement('canvas'); bgCv.width = 512; bgCv.height = 512; { const g = bgCv.getContext('2d'); const gr = g.createRadialGradient(235, 205, 10, 256, 256, 360); gr.addColorStop(0, '#f4f6ed'); gr.addColorStop(0.55, '#e8ecde'); gr.addColorStop(1, '#d4dbc9'); g.fillStyle = gr; g.fillRect(0, 0, 512, 512); }
+  const bgCv = document.createElement('canvas'); bgCv.width = 512; bgCv.height = 512; { const g = bgCv.getContext('2d'); const gr = g.createRadialGradient(235, 205, 10, 256, 256, 360); gr.addColorStop(0, '#faf8f6'); gr.addColorStop(.55, '#eeece9'); gr.addColorStop(1, '#dcd9d4'); g.fillStyle = gr; g.fillRect(0, 0, 512, 512); }
   const bgTex = new THREE.CanvasTexture(bgCv); bgTex.colorSpace = THREE.SRGBColorSpace;
   const ANGLES = [['frente', 0], ['espalda', Math.PI], ['perfil', -Math.PI / 2], ['3-4', -0.6]];
   async function renderSet({ w = isMobile ? 1080 : 1600, h = isMobile ? 1260 : 1866, angles = ANGLES, transparent = false, zoom = 1, pitch = 0.08, dist = 0, cy = null } = {}) {
@@ -609,10 +709,12 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       if (!isMobile && !lowPower) {
         const textures = {};
         drawInto(name => {
-          const canvas = document.createElement('canvas');
-          [canvas.width, canvas.height] = TEX[name].map(size => size * 2);
-          textures[name] = canvas;
-          return canvas;
+          if (!textures[name]) {
+            const canvas = document.createElement('canvas');
+            [canvas.width, canvas.height] = TEX[name].map(size => size * 2);
+            textures[name] = canvas;
+          }
+          return textures[name];
         });
         Object.entries(textures).forEach(([name, canvas]) => {
           const material = parts[name];
