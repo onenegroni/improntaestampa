@@ -172,6 +172,33 @@ async function run(browser, mobile) {
     assert.equal(await activeStep(page), 'Color');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
 
+    await page.locator('#viewer').scrollIntoViewIfNeeded();
+    const shorts = await (await page.waitForFunction(() => {
+      const { api } = window.__impronta;
+      const point = api.zoneScreenPoint('short');
+      return point && document.elementFromPoint(point.x, point.y) === api.renderer.domElement && point;
+    })).jsonValue();
+    if (mobile) await page.touchscreen.tap(shorts.x, shorts.y);
+    else await page.mouse.click(shorts.x, shorts.y);
+    await page.waitForFunction(() => document.querySelector('.zp[data-z=short]').getAttribute('aria-pressed') === 'true');
+    await page.getByRole('button', { name: 'Azul marino', exact: true }).click();
+    assert.equal(await studioState(page, 'colors.short'), '#1e2f5c');
+    assert.equal(await studioState(page, 'colors.cuerpo'), '#141414');
+    await page.locator('#editColor').click();
+    await page.locator('#slotZone .cw-hex').fill('#3690A3');
+    await page.locator('#slotZone .cw-hex').press('Enter');
+    await page.locator('#slotZone .cw-x').click();
+    await page.getByRole('button', { name: 'Remera', exact: true }).click();
+    await page.getByRole('button', { name: 'Blanco', exact: true }).click();
+    assert.equal(await studioState(page, 'colors.cuerpo'), '#f2efe9');
+    assert.equal(await studioState(page, 'colors.short'), '#3690a3');
+    const kitQuote = new URL(await page.locator('#waBtn').getAttribute('href')).searchParams.get('text');
+    assert.ok(kitQuote.includes('Remera: #F2EFE9 (Blanco) · Short: #3690A3'));
+    const kitFragment = kitQuote.match(/(#[\w=-]+)\nDetalles extra/)[1];
+    const legacyKit = JSON.parse(Buffer.from(kitFragment.slice(3), 'base64url').toString());
+    assert.equal(legacyKit.colors.short, '#3690a3');
+    delete legacyKit.colors.short;
+
     const sharedPage = await context.newPage();
     await sharedPage.goto(base + fragment);
     if (mobile) await sharedPage.getByRole('dialog', { name: 'Estudio de diseño' }).waitFor();
@@ -179,8 +206,12 @@ async function run(browser, mobile) {
     assert.equal(await studioState(sharedPage, 'nombre'), 'JUANI');
     assert.equal(await studioState(sharedPage, 'cantidad'), '18');
     assert.equal(await studioState(sharedPage, 'logoImg'), null);
+    const legacyPage = await context.newPage();
+    await legacyPage.goto(base + '#d=' + Buffer.from(JSON.stringify(legacyKit)).toString('base64url'));
+    const legacyQuote = new URL(await legacyPage.locator('#waBtn').getAttribute('href')).searchParams.get('text');
+    assert.match(legacyQuote, /Short: #F2EFE9/);
     assert.deepEqual(errors, []);
-    console.log(`PASS ${mobile ? 'mobile' : 'desktop'}: six products, fabric, direct color picking, custom colors, patterns, text, logo, quote, shared design, four PNGs and ZIP`);
+    console.log(`PASS ${mobile ? 'mobile' : 'desktop'}: six products, fabric, kit color zones, patterns, text, logo, quote, shared and legacy designs, four PNGs and ZIP`);
   } finally {
     await context.close();
   }

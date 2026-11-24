@@ -289,17 +289,18 @@ export function hoodCanvas(cv, st) {
 }
 export function shortCanvas(cv, st, withoutNumber) {
   const g = cv.getContext('2d'), W = cv.width, H = cv.height;
-  drawPattern(g, st.preset === 'splash' ? 'liso' : st.preset, st.colors.cuerpo, pcols(st), W, H, { seed: 21, k: W / 2048 });
+  const base = st.colors.short;
+  drawPattern(g, st.preset === 'splash' ? 'liso' : st.preset, base, pcols(st), W, H, { seed: 21, k: W / 2048 });
   const sx = W / 1024;
   g.fillStyle = st.colors.acento;
   [0, .5, 1].forEach(u => g.fillRect((u - .009) * W, 0, .018 * W, H));
-  stitch(g, sx, st.colors.cuerpo, () => {
+  stitch(g, sx, base, () => {
     [.944, .962].forEach(y => line(g, 0, y * H, W, y * H));
     [.013, .487, .513, .987].forEach(x => line(g, x * W, 0, x * W, .95 * H));
   });
   withoutNumber.getContext('2d').drawImage(cv, 0, 0);
   if (st.numero) {
-    g.fillStyle = ink(st.colors.cuerpo);
+    g.fillStyle = ink(base);
     g.textAlign = 'center';
     g.font = `${84 * sx}px Anton`;
     g.fillText(String(st.numero).slice(0, 3), W * .31, H * .76);

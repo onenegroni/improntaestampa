@@ -16,6 +16,14 @@ import sportsSurface from './fabric-scans/sports-surface.webp';
 import sportsGrain from './fabric-scans/sports-grain.webp';
 
 const TEX = { visor: [768, 384], torso: [2048, 1024], sleeve: [1024, 512], hood: [1024, 512], short: [1024, 512], shortPlain: [1024, 512], flag: [2048, 1365], cap: [1024, 512] };
+const ZONE_MATERIALS = {
+  cuerpo: ['torso', 'flag', 'cap', 'facing'],
+  short: ['short', 'shortPlain'],
+  mangas: ['sleeve', 'sleeveFacing', 'visor'],
+  capucha: ['hood', 'lining'],
+  punos: ['punos', 'cord'],
+};
+const ZONES = Object.keys(ZONE_MATERIALS);
 const isMobile = matchMedia('(max-width: 760px)').matches || /iPhone|Android/i.test(navigator.userAgent);
 // iOS/iPadOS: tighter GPU + canvas memory budget (Safari kills the tab when it is exceeded)
 const isIOS = /iP(hone|od|ad)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -410,7 +418,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     const plain = parts.shortPlain = fabricMat(texes.shortPlain);
     group.add(mesh(garment.top, plain), ...garment.left.shells.map(geo => mesh(geo, plain)));
     group.add(...garment.right.shells.map(geo => mesh(geo, numbered)), mesh(garment.band, parts.punos));
-    addThread(group, [...garment.left.seam, ...garment.right.seam], parts.bodyThread, { radius: .00041 });
+    addThread(group, [...garment.left.seam, ...garment.right.seam], seamMaterial('shortThread'), { radius: .00041 });
     for (const path of garment.cords) {
       const curve = new THREE.CatmullRomCurve3(path.map(point => new THREE.Vector3(...point)));
       group.add(mesh(new THREE.TubeGeometry(curve, 22, .00235, 8), parts.punos));
@@ -592,7 +600,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     if (parts.lining) list.push([parts.lining.color, new THREE.Color(st.colors.capucha).lerp(new THREE.Color('#847d73'), .07).multiplyScalar(.77)]);
     if (parts.facing) list.push([parts.facing.color, new THREE.Color(st.colors.cuerpo).multiplyScalar(.71)]);
     if (parts.sleeveFacing) list.push([parts.sleeveFacing.color, new THREE.Color(st.colors.mangas).multiplyScalar(.71)]);
-    const seamZones = { bodyThread: 'cuerpo', sleeveThread: 'mangas', trimThread: 'punos', hoodThread: 'capucha' };
+    const seamZones = { bodyThread: 'cuerpo', shortThread: 'short', sleeveThread: 'mangas', trimThread: 'punos', hoodThread: 'capucha' };
     for (const [key, zone] of Object.entries(seamZones)) {
       if (!parts[key] || parts[key].map) continue;
       const base = st.colors[zone];
@@ -687,10 +695,12 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   el.addEventListener('webglcontextlost', e => { e.preventDefault(); running = false; console.warn('[impronta] WebGL context lost'); onLost && onLost(); }); el.style.cursor = 'grab';
   el.addEventListener('pointerenter', () => wake());
   // ---- zone picking: tap (movement < 6px) selects a zone; mouse hover highlights it ----
-  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(); let tap = null, zoneCb = null, zonesFn = () => ['cuerpo', 'mangas', 'capucha', 'punos'], hoverZ = null, hoverT = 0, flashZ = null, flashT0 = 0;
+  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(); let tap = null, zoneCb = null, zonesFn = () => ZONES, hoverZ = null, hoverT = 0, flashZ = null, flashT0 = 0;
   const HL = new THREE.Color(0xaab99f);
-  function zoneMats(z) { const map = { cuerpo: ['torso', 'short', 'shortPlain', 'flag', 'cap', 'facing'], mangas: ['sleeve', 'sleeveFacing', 'visor'], capucha: ['hood', 'lining'], punos: ['punos', 'cord'] }; return (map[z] || []).map(k => parts[k]).filter(Boolean); }
-  function zoneOf(mat) { for (const z of ['cuerpo', 'mangas', 'capucha', 'punos']) if (zoneMats(z).includes(mat)) return z; return null; }
+  function zoneMats(z) { return (ZONE_MATERIALS[z] || []).map(k => parts[k]).filter(Boolean); }
+  function zoneOf(mat) {
+    return ZONES.find(z => ZONE_MATERIALS[z].some(name => parts[name] === mat)) || null;
+  }
   function pick(cx, cy) {
     const r = el.getBoundingClientRect(); ndc.set((cx - r.left) / r.width * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
     spin.updateMatrixWorld(true); cam.updateMatrixWorld(); ray.setFromCamera(ndc, cam);
@@ -699,7 +709,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   }
   function applyHL() {
     const t = performance.now(); let fl = 0; if (flashZ) { const k = (t - flashT0) / 900; fl = k < 1 ? Math.sin(Math.min(1, k) * Math.PI) * 0.11 : 0; if (k >= 1) flashZ = null; }
-    ['cuerpo', 'mangas', 'capucha', 'punos'].forEach(z => { const a = (z === hoverZ ? 0.025 : 0) + (z === flashZ ? fl : 0); zoneMats(z).forEach(m => { if (m.emissive) m.emissive.copy(HL).multiplyScalar(a); }); });
+    ZONES.forEach(z => { const a = (z === hoverZ ? 0.025 : 0) + (z === flashZ ? fl : 0); zoneMats(z).forEach(m => { if (m.emissive) m.emissive.copy(HL).multiplyScalar(a); }); });
     return !!flashZ;
   }
   el.addEventListener('pointermove', e => {

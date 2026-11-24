@@ -12,13 +12,13 @@ const PCOL = ['acento', 'acento2', 'acento3'];
 const P = {
   remera: { label: 'Remera', crumb: 'Remera egresados', telas: ['deportiva', 'modal'], zones: { cuerpo: 'Cuerpo', mangas: 'Mangas', capucha: null, punos: 'Cuello y puños' }, frase: 'Más que una remera, un recuerdo para siempre' },
   campera: { label: 'Campera', crumb: 'Campera con capucha', telas: ['frizado'], zones: { cuerpo: 'Cuerpo', mangas: 'Mangas', capucha: 'Capucha', punos: 'Puños y cintura' }, frase: 'Más que una campera, un recuerdo para siempre' },
-  conjunto: { label: 'Conjunto deportivo', crumb: 'Conjunto deportivo', telas: ['deportiva'], zones: { cuerpo: 'Cuerpo y short', mangas: 'Mangas', capucha: null, punos: 'Cuello y cintura' }, frase: '' },
+  conjunto: { label: 'Conjunto deportivo', crumb: 'Conjunto deportivo', telas: ['deportiva'], zones: { cuerpo: 'Remera', short: 'Short', mangas: 'Mangas', capucha: null, punos: 'Cuello y cintura' }, frase: '' },
   musculosa: { label: 'Musculosa', crumb: 'Musculosa', telas: ['deportiva', 'modal'], zones: { cuerpo: 'Cuerpo', mangas: null, capucha: null, punos: 'Vivos' }, frase: '' },
   bandera: { label: 'Bandera', crumb: 'Bandera', telas: [], fixed: 'Poliéster sublimable', zones: { cuerpo: 'Fondo', mangas: null, capucha: null, punos: null }, sizes: ['90×60 cm', '150×90 cm', '200×100 cm'], frase: '' },
   gorra: { label: 'Gorra', crumb: 'Gorra trucker', telas: [], fixed: 'Gabardina + frente sublimado', zones: { cuerpo: 'Copa', mangas: 'Visera', capucha: null, punos: 'Botón y vivos' }, sizes: ['Único ajustable'], frase: '' },
 };
-const ZL = { cuerpo: 'Cuerpo', mangas: 'Mangas', capucha: 'Capucha', punos: 'Puños' };
-const DEFAULT = { producto: 'remera', tela: 'deportiva', colors: { cuerpo: '#141414', mangas: '#b5141a', capucha: '#141414', punos: '#f2efe9', acento: '#b5141a', acento2: '#f4f1ec', acento3: '#7a0d12' }, preset: 'splash', printAll: false, nombre: 'MELI', numero: '26', espalda: 'PROMO 26', escuela: 'ESCUELA SARMIENTO', frase: 'Más que una remera, un recuerdo para siempre', talle: 'TM', cantidad: '30' };
+const ZONES = ['cuerpo', 'short', 'mangas', 'capucha', 'punos'];
+const DEFAULT = { producto: 'remera', tela: 'deportiva', colors: { cuerpo: '#141414', short: '#141414', mangas: '#b5141a', capucha: '#141414', punos: '#f2efe9', acento: '#b5141a', acento2: '#f4f1ec', acento3: '#7a0d12' }, preset: 'splash', printAll: false, nombre: 'MELI', numero: '26', espalda: 'PROMO 26', escuela: 'ESCUELA SARMIENTO', frase: 'Más que una remera, un recuerdo para siempre', talle: 'TM', cantidad: '30' };
 const PRESETS = {
   promo26: {},
   galaxia: { producto: 'campera', tela: 'frizado', colors: { cuerpo: '#141414', mangas: '#141414', capucha: '#141414', punos: '#141414', acento: '#9fc8e8', acento2: '#6a2fa6', acento3: '#1f6fd1' }, preset: 'galactico', printAll: true, frase: 'Más que una campera, un recuerdo para siempre' },
@@ -37,7 +37,10 @@ if (openedDesign) {
     if (Object.prototype.hasOwnProperty.call(P, data.producto)) state.producto = data.producto;
     if (Object.prototype.hasOwnProperty.call(TELAS, data.tela)) state.tela = data.tela;
     if (Object.prototype.hasOwnProperty.call(PRESETS_P, data.preset)) state.preset = data.preset;
-    for (const key of Object.keys(state.colors)) state.colors[key] = normHex((data.colors || {})[key]) || state.colors[key];
+    const savedColors = data.colors || {};
+    for (const key of Object.keys(state.colors)) state.colors[key] = normHex(savedColors[key]) || state.colors[key];
+    // Older kits used the shirt color for both garments.
+    if (state.producto === 'conjunto' && !normHex(savedColors.short)) state.colors.short = state.colors.cuerpo;
     for (const [key, limit] of Object.entries({ nombre: 14, numero: 3, espalda: 18, escuela: 32, frase: 48, talle: 24, cantidad: 4 })) {
       if (typeof data[key] === 'string') state[key] = data[key].slice(0, limit);
     }
@@ -106,7 +109,7 @@ function buildPanel() {
    <div class="zpills" role="group" aria-label="Zona a colorear"></div>
    <div class="palette-head"><span id="colorName"></span><button type="button" class="studio-link" id="editColor" aria-controls="slotZone" aria-expanded="false">Color personalizado</button></div>
    <div class="studio-palette" id="palette" role="group" aria-label="Colores rápidos"></div><div id="slotZone"></div>`;
-  Object.keys(ZL).forEach(key => $('#grp-colores .zpills').appendChild(btn({ class: 'zp', 'data-z': key }, '<i></i><span></span>')));
+  ZONES.forEach(key => $('#grp-colores .zpills').appendChild(btn({ class: 'zp', 'data-z': key }, '<i></i><span></span>')));
   PALETTE.forEach(([hex, name]) => $('#palette').appendChild(btn({'data-hex': hex, 'aria-label': name, title: name}, `<i style="background:${hex}"></i>`)));
   $('#grp-estampa').innerHTML = `<h4>Estampado</h4><div class="prints" role="group" aria-label="Estampado"></div>
    <div id="pcols"><span class="pcl">Colores del estampado</span><div class="pchips">${PCOL.map((key, i) => `<button type="button" class="pc" data-i="${i}" aria-controls="slotPrint" aria-expanded="false"><i></i><span>Color ${i + 1}</span></button>`).join('')}</div></div>
