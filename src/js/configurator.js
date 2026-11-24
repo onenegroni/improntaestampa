@@ -3,6 +3,7 @@ import * as THREE from './vendor/three.module.min.js';
 import { RoomEnvironment } from './vendor/RoomEnvironment.js';
 import * as G from './garments.js';
 import * as T from './textures.js';
+import { fittedTeeParts } from './models/fitted-tee.js';
 // CC0 textile scans by colormass and Rico Cilliers, published by Poly Haven.
 import jerseyNormal from './fabric-scans/jersey-normal.webp';
 import jerseySurface from './fabric-scans/jersey-surface.webp';
@@ -80,7 +81,11 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     torso: [3.3, 1.9], sleeve: [1.34, .59], longSleeve: [1.36, 1.46],
     hood: [1.74, .89], lining: [1.74, .89], short: [1.45, 1.54], shortPlain: [1.45, 1.54],
   };
-  const panelFor = (part, product) => part === 'sleeve' && product === 'campera' ? 'longSleeve' : part;
+  const panelFor = (part, product) => {
+    if (part === 'sleeveFacing') return 'sleeve';
+    if (part === 'sleeve' && product === 'campera') return 'longSleeve';
+    return part;
+  };
   const textureLoader = new THREE.TextureLoader();
   const swatchesReady = Promise.all(Object.values(fabrics).map(async fabric => {
     const maps = await Promise.allSettled(fabric.sources.map(src => textureLoader.loadAsync(src)));
@@ -91,8 +96,10 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
         texture.anisotropy = lowPower ? 2 : 8;
         return texture;
       });
-      fabric.grain = maps[2].value.image;
-      maps[2].value.dispose();
+      fabric.grainTexture = maps[2].value;
+      fabric.grainTexture.wrapS = fabric.grainTexture.wrapT = THREE.RepeatWrapping;
+      fabric.grainTexture.anisotropy = lowPower ? 2 : 8;
+      fabric.grain = fabric.grainTexture.image;
       fabric.panels = new Map();
     } else {
       // Older browsers can still use the procedural textile if image decoding fails.
@@ -169,12 +176,6 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   // and fitted garments. Widths retain the catalog fit of each product.
   // https://github.com/kblood/CharacterCreator/blob/master/LICENSE-NOTES.md
   const cuts = {
-    remera: {
-      width: [[-.34,.164],[-.264,.159],[-.160,.152],[-.055,.156],[.064,.172],[.152,.181],[.205,.182]],
-      frontDepth: [[-.34,.114],[-.234,.120],[-.103,.115],[.015,.109],[.068,.099],[.111,.087],[.158,.072],[.198,.060],[.248,.052]],
-      backDepth: [[-.34,.110],[-.219,.096],[-.102,.090],[.013,.097],[.073,.100],[.117,.098],[.159,.091],[.204,.078],[.248,.057]],
-      neckK: .41, neckDrop: .055, slope: .24, wrinkle: .95,
-    },
     conjunto: {
       width: [[-.34,.145],[-.275,.161],[-.195,.159],[-.055,.172],[.085,.191],[.205,.199]],
       frontDepth: [[-.34,.076],[-.241,.104],[-.092,.112],[.018,.109],[.071,.100],[.115,.088],[.154,.075],[.197,.058],[.248,.049]],
@@ -224,6 +225,49 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     // Needlework is too fine to put its own noise into the studio shadow map.
     sewn.receiveShadow = true;
     group.add(sewn);
+  }
+
+  function fittedFabric(name, side) {
+    const material = fabricMat(texes[name], { side });
+    const cloth = { value: null };
+    const relief = { value: 0 };
+    material.userData.clothGrain = { cloth, relief };
+    material.onBeforeCompile = shader => {
+      shader.uniforms.improntaCloth = cloth;
+      shader.uniforms.improntaRelief = relief;
+      shader.uniforms.improntaTile = { value: new THREE.Vector2(...panelRepeats[name]) };
+      shader.fragmentShader = shader.fragmentShader.replace('#include <map_pars_fragment>',
+        `#include <map_pars_fragment>
+         uniform sampler2D improntaCloth;
+         uniform float improntaRelief;
+         uniform vec2 improntaTile;`);
+      shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>',
+        `#include <map_fragment>
+         float threadValue = texture2D(improntaCloth, vMapUv * improntaTile).r;
+         diffuseColor.rgb *= 1.0 + (threadValue - 0.5) * improntaRelief;`);
+    };
+    return material;
+  }
+
+  function buildFittedTee() {
+    const group = new THREE.Group();
+    const side = THREE.FrontSide;
+    parts.torso = fittedFabric('torso', side);
+    parts.sleeve = fittedFabric('sleeve', side);
+    parts.punos = colorMat(state.colors.punos, { side });
+    parts.facing = fabricMat(null, { side: THREE.BackSide });
+    parts.sleeveFacing = fabricMat(null, { side: THREE.BackSide });
+    parts.bodyThread = own(new THREE.MeshStandardMaterial({
+      map: texes.torso, side, roughness: .98, vertexColors: true,
+    }));
+    parts.sleeveThread = own(parts.bodyThread.clone());
+    parts.sleeveThread.map = texes.sleeve;
+    for (const { name, geometry } of fittedTeeParts()) {
+      const panel = mesh(geometry, parts[name]);
+      panel.castShadow = name === 'torso' || name === 'sleeve' || name === 'punos';
+      group.add(panel);
+    }
+    return group;
   }
 
   function buildTop(kind, yOff = 0) {
@@ -398,10 +442,18 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     flag = null;
     hangs.length = 0;
     const P = state.producto;
+    const fitted = P === 'remera';
+    key.intensity = fitted ? 2.08 : 1.62;
+    key.shadow.bias = fitted ? -.00012 : -.00021;
+    key.shadow.normalBias = fitted ? .0018 : .0044;
+    fill.intensity = fitted ? .49 : .76;
+    rim.intensity = fitted ? .63 : .76;
     product.rotation.set(0, 0, 0);
     product.position.set(0, 0, 0);
     paintTextures();
-    if (P === 'remera' || P === 'musculosa' || P === 'campera') {
+    if (P === 'remera') {
+      product.add(buildFittedTee());
+    } else if (P === 'musculosa' || P === 'campera') {
       product.add(buildTop(P));
     } else if (P === 'conjunto') {
       // The jersey tucks into the shorts with the elastic band in front.
@@ -454,7 +506,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     bbox.setFromObject(anim);
     pbox.setFromObject(product);
     if (pbox.isEmpty() || P === 'bandera') pbox.copy(bbox);
-    contact.position.y = pbox.min.y - (P === 'gorra' ? .010 : .023);
+    contact.position.y = pbox.min.y - (P === 'gorra' || fitted ? .010 : .023);
     contact.visible = P !== 'bandera';
     const width = Math.max(0.23, pbox.max.x - pbox.min.x);
     const depth = Math.max(0.16, pbox.max.z - pbox.min.z);
@@ -514,7 +566,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     if (need.includes('torso')) {
       T.torsoCanvas(get('torso'), st, { vOf, product: P });
     }
-    if (need.includes('sleeve')) T.sleeveCanvas(get('sleeve'), st, { stripe: P !== 'campera' });
+    if (need.includes('sleeve')) T.sleeveCanvas(get('sleeve'), st, { stripe: P !== 'campera', stitched: P === 'remera' });
     if (need.includes('hood')) T.hoodCanvas(get('hood'), st);
     if (need.includes('short')) T.shortCanvas(get('short'), st, get('shortPlain'));
     if (need.includes('flag')) T.flagCanvas(get('flag'), st);
@@ -526,6 +578,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     for (const name of need) {
       const canvas = get(name);
       const repeat = panelRepeats[panelFor(name, P)];
+      if (P === 'remera' && fabric.grainTexture) continue;
       const scan = !fixed && fabric.grain && { image: fabric.grain, repeat };
       T.applyWeave(canvas, weave, canvas.width / TEX[name][0], scan);
     }
@@ -538,9 +591,10 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     if (parts.cord) list.push([parts.cord.color, new THREE.Color(st.colors.punos)]);
     if (parts.lining) list.push([parts.lining.color, new THREE.Color(st.colors.capucha).lerp(new THREE.Color('#847d73'), .07).multiplyScalar(.77)]);
     if (parts.facing) list.push([parts.facing.color, new THREE.Color(st.colors.cuerpo).multiplyScalar(.71)]);
+    if (parts.sleeveFacing) list.push([parts.sleeveFacing.color, new THREE.Color(st.colors.mangas).multiplyScalar(.71)]);
     const seamZones = { bodyThread: 'cuerpo', sleeveThread: 'mangas', trimThread: 'punos', hoodThread: 'capucha' };
     for (const [key, zone] of Object.entries(seamZones)) {
-      if (!parts[key]) continue;
+      if (!parts[key] || parts[key].map) continue;
       const base = st.colors[zone];
       const color = new THREE.Color(base);
       if (T.lum(base) < .15) color.lerp(new THREE.Color('#a9a19b'), .18);
@@ -548,6 +602,11 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       list.push([parts[key].color, color]);
     }
     for (const [name, material] of Object.entries(parts)) {
+      const grainLayer = material.userData.clothGrain;
+      if (grainLayer) {
+        grainLayer.cloth.value = f.grainTexture || null;
+        grainLayer.relief.value = f.grainTexture ? 1.28 : 0;
+      }
       if (!material.normalMap) continue;
       const accessory = name === 'cap' || name === 'visor' || name === 'flag';
       const ribbed = material.normalMap === rib;
@@ -630,7 +689,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   // ---- zone picking: tap (movement < 6px) selects a zone; mouse hover highlights it ----
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(); let tap = null, zoneCb = null, zonesFn = () => ['cuerpo', 'mangas', 'capucha', 'punos'], hoverZ = null, hoverT = 0, flashZ = null, flashT0 = 0;
   const HL = new THREE.Color(0xaab99f);
-  function zoneMats(z) { const map = { cuerpo: ['torso', 'short', 'shortPlain', 'flag', 'cap', 'facing'], mangas: ['sleeve', 'visor'], capucha: ['hood', 'lining'], punos: ['punos', 'cord'] }; return (map[z] || []).map(k => parts[k]).filter(Boolean); }
+  function zoneMats(z) { const map = { cuerpo: ['torso', 'short', 'shortPlain', 'flag', 'cap', 'facing'], mangas: ['sleeve', 'sleeveFacing', 'visor'], capucha: ['hood', 'lining'], punos: ['punos', 'cord'] }; return (map[z] || []).map(k => parts[k]).filter(Boolean); }
   function zoneOf(mat) { for (const z of ['cuerpo', 'mangas', 'capucha', 'punos']) if (zoneMats(z).includes(mat)) return z; return null; }
   function pick(cx, cy) {
     const r = el.getBoundingClientRect(); ndc.set((cx - r.left) / r.width * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);

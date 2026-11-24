@@ -199,7 +199,7 @@ export function torsoCanvas(cv, st, { vOf, product }) {
   const W = cv.width, H = cv.height, g = cv.getContext('2d');
   drawPattern(g, st.preset, st.colors.cuerpo, pcols(st), W, H, { seed: 11, k: W / 2048, region: 'body' });
   const Y = y => (1 - vOf(y)) * H;
-  shade(g, W, H);
+  if (product !== 'remera') shade(g, W, H);
   const base = st.preset === 'galactico' ? '#0a0f2a' : (st.preset === 'tiedye' || st.preset === 'manitos') ? '#1b1f3b' : st.colors.cuerpo;
   const t = ink(base), sx = W / 2048;
   g.textBaseline = 'alphabetic';
@@ -228,8 +228,10 @@ export function torsoCanvas(cv, st, { vOf, product }) {
     if (st.logoImg) drawLogo(g, st.logoImg, 650 * sx, Y(0.095), 100 * sx);
   }
   // double-needle hem + side seams (subtle, like real cut-and-sewn garments)
-  if (product !== 'campera') stitch(g, sx, base, () => { [0.016, 0.022].forEach(d => { g.beginPath(); g.moveTo(0, Y(-0.34 + d)); g.lineTo(W, Y(-0.34 + d)); g.stroke(); }); });
-  g.save(); g.globalAlpha = 0.22; g.strokeStyle = mix(base, '#000000', 0.55); g.lineWidth = 2.5 * sx; [0, W / 2, W].forEach(x => { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }); g.restore();
+  if (product !== 'remera') {
+    if (product !== 'campera') stitch(g, sx, base, () => { [0.016, 0.022].forEach(d => { g.beginPath(); g.moveTo(0, Y(-0.34 + d)); g.lineTo(W, Y(-0.34 + d)); g.stroke(); }); });
+    g.save(); g.globalAlpha = 0.22; g.strokeStyle = mix(base, '#000000', 0.55); g.lineWidth = 2.5 * sx; [0, W / 2, W].forEach(x => { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }); g.restore();
+  }
   const jacket = product === 'campera';
   const numberY = Y(jacket ? -.118 : -.065);
   // back
@@ -261,8 +263,9 @@ export function plainCanvas(cv, st, zone, { pattern = false, seed = 5 } = {}) {
   if (pattern && st.preset !== 'liso') drawPattern(g, st.preset, st.colors[zone], pcols(st), cv.width, cv.height, { seed, k: cv.width / 2048, region: 'side' });
   else { g.fillStyle = st.colors[zone]; g.fillRect(0, 0, cv.width, cv.height); }
 }
-export function sleeveCanvas(cv, st, { stripe = true } = {}) {
+export function sleeveCanvas(cv, st, { stripe = true, stitched = false } = {}) {
   plainCanvas(cv, st, 'mangas', { pattern: st.printAll, seed: 9 });
+  if (stitched) return;
   const g = cv.getContext('2d'), W = cv.width, H = cv.height;
   const shade = g.createLinearGradient(0, 0, 0, H * .18);
   shade.addColorStop(0, 'rgba(10,10,10,.18)');

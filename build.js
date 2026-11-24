@@ -6,7 +6,7 @@ const common = { bundle: true, format: 'iife', minify: true, target: ['es2018', 
   for (const f of ['main.js','configurator.js','garments.js','textures.js']) fs.rmSync(path.join(O,'js',f),{force:true});
   fs.rmSync(path.join(O,'js','vendor'),{recursive:true,force:true});
   await esbuild.build({ ...common, entryPoints: [path.join(S, 'js/main.js')], outfile: path.join(O, 'js/app.js') });
-  await esbuild.build({ ...common, loader: { '.webp': 'dataurl' }, entryPoints: [path.join(S, 'js/studio-entry.js')], outfile: path.join(O, 'js/studio.js') });
+  await esbuild.build({ ...common, loader: { '.webp': 'dataurl', '.im3d': 'binary' }, entryPoints: [path.join(S, 'js/studio-entry.js')], outfile: path.join(O, 'js/studio.js') });
   let css = fs.readFileSync(path.join(S, 'styles.css'), 'utf8');
   // fonts: separate woff2 files (font-display:swap) so first paint never waits for them; the page CSS is inlined in <head>.
   // file:// can't load @font-face files cross-origin, so an inline-font stylesheet is injected only there (see <head>).
