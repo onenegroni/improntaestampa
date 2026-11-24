@@ -62,9 +62,9 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   const darkM = new THREE.MeshStandardMaterial({ color: 0x262823, roughness: 0.65, metalness: 0.1 });
 
   const fabrics = {
-    deportiva: { normal: T.knitNormal(192, 'mesh'), repeat: [13, 8], roughness: 0.80, sheen: 0.38, sheenRoughness: 0.65, normalScale: 0.55, spec: 0.24 },
-    modal: { normal: T.knitNormal(192, 'jersey'), repeat: [13, 8], roughness: 0.90, sheen: 0.50, sheenRoughness: 0.80, normalScale: 0.43, spec: 0.16 },
-    frizado: { normal: T.knitNormal(192, 'fleece'), repeat: [12, 7], roughness: 0.94, sheen: 0.38, sheenRoughness: 0.87, normalScale: 0.52, spec: 0.11 },
+    deportiva: { normal: T.knitNormal(192, 'mesh'), repeat: [13, 8], roughness: 0.86, sheen: 0.20, sheenRoughness: 0.77, normalScale: 0.34, spec: 0.19 },
+    modal: { normal: T.knitNormal(192, 'jersey'), repeat: [13, 8], roughness: 0.91, sheen: 0.34, sheenRoughness: 0.87, normalScale: 0.34, spec: 0.15 },
+    frizado: { normal: T.knitNormal(192, 'fleece'), repeat: [12, 7], roughness: 0.96, sheen: 0.28, sheenRoughness: 0.91, normalScale: 0.41, spec: 0.10 },
   };
   const finishKinds = { deportiva: 'mesh', modal: 'jersey', frizado: 'fleece' };
   for (const [key, fabric] of Object.entries(fabrics)) {
@@ -121,22 +121,40 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   const vOf = y => { const { yHem, yS } = G.TORSO; return G.clamp(0.8 * (y - yHem) / (yS - yHem), 0, 1); };
 
   function clearGroup(gr) { for (const child of gr.children) child.traverse(object => object.geometry?.dispose()); gr.clear(); }
+  // Fitting marks are in scene units from the hem to the shoulder.
+  // Tee cross sections adapt the MakeHuman system tee (CC0), fitted by CharacterCreator:
+  // https://github.com/kblood/CharacterCreator/blob/master/LICENSE-NOTES.md
+  const cuts = {
+    remera: {
+      width: [[-.34,.194],[-.236,.188],[-.139,.181],[-.043,.184],[.084,.197],[.205,.205]],
+      frontDepth: [[-.34,.112],[-.23,.124],[-.075,.120],[.079,.113],[.205,.080]],
+      backDepth: [[-.34,.114],[-.23,.094],[-.075,.084],[.079,.102],[.205,.080]],
+      neckK: .35, neckKZ: .74, neckDrop: .056, slope: .21, q0: .62, wrinkle: 1,
+    },
+    conjunto: {
+      width: [[-.34,.148],[-.266,.171],[-.196,.176],[-.062,.186],[.094,.205],[.205,.202]],
+      frontDepth: [[-.34,.062],[-.256,.080],[-.18,.094],[.023,.111],[.126,.111],[.205,.076]],
+      backDepth: [[-.34,.060],[-.263,.069],[-.17,.078],[.023,.093],[.126,.094],[.205,.068]],
+      neckK: .35, neckKZ: .73, neckDrop: .062, slope: .23, q0: .62, wrinkle: .88,
+    },
+    musculosa: {
+      width: [[-.34,.192],[-.2,.173],[-.053,.182],[.103,.199],[.205,.194]],
+      frontDepth: [[-.34,.075],[-.169,.086],[.026,.113],[.126,.104],[.205,.075]],
+      backDepth: [[-.34,.069],[-.169,.075],[.026,.093],[.126,.089],[.205,.071]],
+      neckK: .48, neckKZ: .76, neckDrop: .102, slope: .21, q0: .58, wrinkle: 1.05, tank: true,
+    },
+    campera: {
+      width: [[-.34,.185],[-.289,.197],[-.172,.197],[-.038,.191],[.105,.214],[.205,.216]],
+      frontDepth: [[-.34,.091],[-.25,.112],[-.09,.111],[.103,.117],[.205,.089]],
+      backDepth: [[-.34,.105],[-.21,.105],[-.045,.108],[.107,.105],[.205,.088]],
+      neckK: .41, neckKZ: .75, neckDrop: .052, slope: .24, q0: .68, wrinkle: .67, heavy: true,
+    },
+  };
   const tailoring = new Map();
   function getTailoring(kind) {
     if (tailoring.has(kind)) return tailoring.get(kind);
-    const tank = kind === 'musculosa', long = kind === 'campera';
-    const options = {
-      neckK: tank ? .48 : long ? .39 : .36,
-      neckDrop: tank ? .101 : long ? .046 : .050,
-      neckKZ: tank ? .66 : .63,
-      slope: tank ? .24 : .33,
-      heavy: long,
-      depth: long ? .014 : -.008,
-      width: long ? [[-.34,.205],[-.24,.215],[-.06,.223],[.11,.219],[.2,.216]]
-        : [[-.34,.197],[-.21,.194],[-.04,.198],[.12,.208],[.2,.213]],
-    };
-    const fn = G.torsoFn(options);
-    const holes = [-1, 1].map(side => G.armhole(fn, side, {long, tank}));
+    const fn = G.torsoFn(cuts[kind]);
+    const holes = [-1, 1].map(side => G.armhole(fn, side, { long: kind === 'campera', tank: kind === 'musculosa' }));
     const cut = {fn, holes};
     tailoring.set(kind, cut);
     return cut;
@@ -178,14 +196,14 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
         const arm = Math.exp(-Math.max(0, cut(u, v)) * 4.6);
         const lowerArm = 1 - THREE.MathUtils.smoothstep(v, .68, .93);
         const lip = 1 - THREE.MathUtils.smoothstep(v, 0, .12);
-        return 1 - (.064 + .122 * lowerArm) * arm - lip * .070;
+        return 1 - (.048 + .094 * lowerArm) * arm - lip * .065;
       },
     });
     const bodyMaterial = parts.torso = fabricMat(texes.torso);
     const trim = parts.punos = colorMat(state.colors.punos);
     const facing = parts.facing = fabricMat(null);
     group.add(mesh(body, bodyMaterial));
-    for (const atNeck of [true, false]) {
+    for (const atNeck of long ? [false] : [true, false]) {
       const inside = mesh(G.facing(fn, atNeck), facing);
       inside.castShadow = false;
       group.add(inside);
@@ -204,7 +222,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       const sleeveMaterial = parts.sleeve = fabricMat(texes.sleeve);
       const sleeveSeams = [];
       for (const [i, side] of [-1, 1].entries()) {
-        const arm = G.sleeve(side, holes[i], { long });
+        const arm = G.sleeve(side, holes[i], { long, sport: kind === 'conjunto' });
         group.add(mesh(arm.shell, sleeveMaterial), mesh(arm.trim, trim));
         sleeveSeams.push(arm.sleeveThread);
         trimSeams.push(arm.trimThread);
@@ -332,7 +350,8 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     if (P === 'remera' || P === 'musculosa' || P === 'campera') {
       product.add(buildTop(P));
     } else if (P === 'conjunto') {
-      product.add(buildTop('remera', .20), buildShort(-.178));
+      // The jersey tucks into the shorts with the elastic band in front.
+      product.add(buildTop('conjunto', .20), buildShort(-.153));
     } else if (P === 'bandera') {
       const [width, height] = state.talle.split('×').map(parseFloat);
       const clothHeight = Math.min(.8, 1.2 * (height / width || .64));
@@ -381,11 +400,11 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     bbox.setFromObject(anim);
     pbox.setFromObject(product);
     if (pbox.isEmpty() || P === 'bandera') pbox.copy(bbox);
-    contact.position.y = pbox.min.y - (P === 'gorra' ? 0.018 : 0.038);
+    contact.position.y = pbox.min.y - (P === 'gorra' ? .010 : .023);
     contact.visible = P !== 'bandera';
     const width = Math.max(0.23, pbox.max.x - pbox.min.x);
     const depth = Math.max(0.16, pbox.max.z - pbox.min.z);
-    contact.scale.set(width * 1.45, depth * 2.8, 1);
+    contact.scale.set(width * 1.27, depth * 2.42, 1);
     spin.rotation.y = r0;
     frame();
     matTargets().forEach(([color, target]) => color.copy(target));

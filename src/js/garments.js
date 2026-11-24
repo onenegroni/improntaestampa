@@ -1,17 +1,27 @@
-// Procedural garment geometry for Impronta configurator (all original, no external models).
+// Parametric garment geometry for the Impronta configurator.
 import * as THREE from './vendor/three.module.min.js';
 
 const TAU = Math.PI * 2;
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const smooth = t => t * t * (3 - 2 * t);
-// spline-ish profile lookup: pts = [[y, val], ...] ascending y
-function prof(pts, y) {
-  if (y <= pts[0][0]) return pts[0][1];
-  for (let i = 1; i < pts.length; i++) {
-    if (y <= pts[i][0]) { const t = (y - pts[i - 1][0]) / (pts[i][0] - pts[i - 1][0]); return lerp(pts[i - 1][1], pts[i][1], smooth(t)); }
+// Interpolate the cut of the fabric with a continuous tangent at each fitting mark.
+function prof(points, y) {
+  if (y <= points[0][0]) return points[0][1];
+  for (let i = 1; i < points.length; i++) {
+    const [rightY, rightWidth] = points[i];
+    if (y > rightY) continue;
+    const [leftY, leftWidth] = points[i - 1];
+    const [beforeY, beforeWidth] = points[Math.max(0, i - 2)];
+    const [afterY, afterWidth] = points[Math.min(points.length - 1, i + 1)];
+    const span = rightY - leftY;
+    const t = (y - leftY) / span;
+    const leftTangent = (rightWidth - beforeWidth) / (rightY - beforeY);
+    const rightTangent = (afterWidth - leftWidth) / (afterY - leftY);
+    return lerp(leftWidth, rightWidth, smooth(t))
+      + span * t * (1 - t) * ((1 - t) * leftTangent - t * rightTangent);
   }
-  return pts[pts.length - 1][1];
+  return points[points.length - 1][1];
 }
 function hash(x, y) { const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return s - Math.floor(s); }
 function vnoise(x, y) {
@@ -166,35 +176,39 @@ const smin = (a, b, k) => { const h = clamp(0.5 + 0.5 * (b - a) / k, 0, 1); retu
 const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 export function torsoFn(o) {
   const { yHem, yNeck } = TORSO;
-  const widthP = o.width || [[-0.34, 0.212], [-0.2, 0.205], [-0.05, 0.207], [0.1, 0.214], [0.2, 0.216]];
-  const dz = o.depth || 0;
-  const bfP = [[-0.34, 0.112 + dz], [-0.15, 0.108 + dz], [0.02, 0.118 + dz], [0.12, 0.122 + dz], [0.2, 0.116 + dz]];
-  const bbP = [[-0.34, 0.108 + dz], [-0.1, 0.1 + dz], [0.1, 0.104 + dz], [0.2, 0.1 + dz]];
-  const kx = o.neckK || 0.35, kz = o.neckKZ || 0.56;
-  const drop = o.neckDrop ?? 0.045, slope = o.slope ?? 0.31, yA = 0.04, q0 = o.q0 ?? 0.66;
-  const wr = o.wrinkle ?? 1, nx = 2.6;
+  const { width: widthP, frontDepth: bfP, backDepth: bbP } = o;
+  const kx = o.neckK, kz = o.neckKZ;
+  const drop = o.neckDrop, slope = o.slope, yA = 0.03, q0 = o.q0;
+  const wr = o.wrinkle, nx = 3.3;
   const heavy = o.heavy === true;
-  const yN = th => yNeck - drop * Math.pow(Math.max(0, Math.cos(th)), 2.2);
+  const yN = th => {
+    const front = Math.cos(th);
+    return yNeck - drop * Math.pow(Math.max(0, front), 1.85)
+      - .014 * Math.max(0, -front) ** 2 - (o.tank ? .006 : .011) * (1 - front * front) ** 2;
+  };
   const fn = (u, v) => {
     const th = (u - 0.25) * TAU, c = Math.cos(th), s = Math.sin(th);
     const yTopN = yN(th), yl = lerp(yHem, yTopN, v);
     const q = clamp((yl - yA) / (yTopN - yA), 0, 1);
     const sa = 1 - (1 - kx) * sstep(q0, 1, q);
-    const sb = 1 - (1 - kz) * Math.pow(sstep(0.35, 1, q), 1.4);
-    const yy = Math.min(yl, 0.2);
+    const sb = 1 - (1 - kz) * sstep(.49, 1, q);
+    const yy = Math.min(yl, .205);
     const a = prof(widthP, yy), b = c > 0 ? prof(bfP, yy) : prof(bbP, yy);
     let x = a * sa * Math.sign(s) * Math.pow(Math.abs(s), 2 / nx);
     let z = b * sb * Math.sign(c) * Math.pow(Math.abs(c), 2 / 2.2);
     // shoulder line caps the height, so the top reads as a sloped plane, not a dome
-    const ax = Math.abs(x), yTop = yNeck - slope * Math.max(0, ax - 0.072);
+    const ax = Math.abs(x);
+    const shoulder = Math.max(0, ax - .073);
+    const yTop = yNeck - slope * shoulder - .022 * sstep(.145, .211, ax)
+      - .017 * Math.abs(c) * sstep(.085, .17, ax);
     let y = smin(yl, yTop, 0.012);
     // Broad gravity folds start near the side seams and deepen at the loose hem.
     // Smaller, asymmetric compression ridges pull away from each armpit.
     const side = Math.pow(Math.abs(s), 2.4);
     const hemWeight = sstep(0.05, -0.34, yl);
     const chest = Math.pow(Math.max(0, c), 5);
-    const drape = (Math.sin(th * 5.0 + yl * 2.7) * 0.65 + Math.sin(th * 8.0 - yl * 3.5 + 1.7) * 0.35)
-      * (0.0014 + 0.0073 * hemWeight) * (1 - 0.64 * chest * (1 - hemWeight));
+    const drape = (Math.sin(th * 4.0 + yl * 4.2) * .67 + Math.sin(th * 7.0 - yl * 5.8 + 1.7) * .33)
+      * (.0009 + .0041 * hemWeight) * (.42 + .58 * side) * (1 - .64 * chest * (1 - hemWeight));
     const pull = (ax - 0.15) * 0.8 + (yl - (s > 0 ? 0.066 : 0.080));
     const armpit = (Math.exp(-Math.pow(pull / 0.026, 2)) - 0.64 * Math.exp(-Math.pow((pull + 0.022) / 0.022, 2)))
       * sstep(0.08, 0.20, ax) * 0.0055;
@@ -209,7 +223,7 @@ export function torsoFn(o) {
       - .65 * crease(yl + .243 + .055 * s + (ax - .09) * .4, .024)
     );
     const underarm = -.0043 * side * crease(yl - .061 + .31 * (ax - .15), .024);
-    const hemRoll = .0018 * crease(v - .025, .015);
+    const hemRoll = .00145 * crease(v - .025, .015);
     // Long folds hang under their own weight. The shorter compression folds
     // pull in diagonally from each side; they taper out toward the print area.
     const loose = sstep(.23, -.31, yl);
@@ -221,14 +235,16 @@ export function torsoFn(o) {
       + .0072 * crease(ridgeB, .023) - .0046 * crease(ridgeB + .021, .027)
     ) + back * (.0075 * crease(ridgeA, .028) - .0065 * crease(ridgeA + .031, .021)));
     const stress = side * (1 - sstep(-.07, .14, yl)) * (
-      .0108 * crease(yl + .19 + s * .048 + ax * .41, .022)
-      - .0083 * crease(yl + .218 + s * .044 + ax * .36, .021)
+      .0072 * crease(yl + .19 + s * .048 + ax * .41, .030)
+      - .0052 * crease(yl + .218 + s * .044 + ax * .36, .027)
     );
     const off = (drape + armpit + waist + grain + tuck + underarm + (fall + stress) * (heavy ? .74 : 1.19)) * wr + edge + hemRoll;
     const length = Math.hypot(x, z) || 1;
     x += x / length * off + .0095 * hemWeight * wr - .0021 * Math.sin(yl * 11) * side;
-    z += z / length * off + .005 * hemWeight * s;
-    y += (Math.sin(th * 4 + 1.15) * .0043 + Math.sin(th * 7 - .5) * .0016 + .005 * s) * sstep(.145, 0, v) * wr;
+    // The torso changes pitch from the chest to the unsupported lower panels.
+    const balance = .013 * sstep(-.23, .056, yl) - .008 * hemWeight;
+    z += z / length * off + balance + .006 * hemWeight * s;
+    y += (Math.sin(th * 2 + 1.15) * .0054 + Math.sin(th * 5 - .5) * .0016 + .0034 * s) * sstep(.145, 0, v) * wr;
     return [x, y, z];
   };
   // arc-length U: the cross-section is a superellipse, so equal angle steps are NOT equal fabric widths.
@@ -268,29 +284,41 @@ export function facing(fn, neck) {
 // A set-in sleeve starts on the same UV boundary that is cut out of the body.
 // Its volume then eases into a flattened tube, with gravity folds at the elbow.
 export function armhole(fn, side, { long = false, tank = false } = {}) {
-  const centerU = side < 0 ? 0 : 0.5;
-  const centerV = long ? 0.797 : 0.787;
-  const radiusU = tank ? .128 : long ? .122 : .105;
-  const radiusV = tank ? .202 : long ? .183 : .164;
+  const centerU = side < 0 ? 0 : .5;
+  const centerV = tank ? .782 : .801;
+  const radiusU = tank ? .134 : long ? .124 : .106;
+  const radiusV = tank ? .196 : long ? .179 : .161;
+  const frontTilt = tank ? .23 : .14;
+  const widthAt = height => radiusU * (1 + .22 * height);
   const wrap = u => (u + 1) % 1;
-  const param = (a, scale = 1) => [
-    wrap(centerU - side * radiusU * Math.cos(a) * scale),
-    centerV + radiusV * (Math.sin(a) - .08 * Math.cos(a)) * scale,
-  ];
+  const param = (angle, scale = 1) => {
+    const front = Math.cos(angle) * scale, height = Math.sin(angle) * scale;
+    return [wrap(centerU - side * widthAt(height) * front), centerV + radiusV * (height - frontTilt * front)];
+  };
   const clip = (u, v) => {
-    const du = ((u - centerU + 1.5) % 1 - .5) / radiusU;
-    const dv = (v - centerV) / radiusV - side * .08 * du;
-    return du * du + dv * dv - 1;
+    const du = ((u - centerU + 1.5) % 1 - .5) * -side / radiusU;
+    const dv = (v - centerV) / radiusV;
+    // Invert the tilted armhole so the sleeve and the cut use the same sewn edge.
+    const a = 1 + .22 * dv;
+    const front = 2 * du / (a + Math.sqrt(Math.max(.01, a * a + .88 * frontTilt * du)));
+    const height = dv + frontTilt * front;
+    return front * front + height * height - 1;
   };
   const at = (a, scale) => fn(...param(a, scale));
   const threadPath = trace(70, t => liftFromAxis(at(t * TAU, 1.065), .00085));
   return { clip, at, threadPath };
 }
-export function sleeve(side, hole, { long = false } = {}) {
-  const pts = long
-    ? [[.151, .126, -.004], [.192, .098, -.005], [.221, -.012, .005], [.236, -.126, .021], [.239, -.236, .028], [.241, -.325, .039]]
-    : [[.153, .122, -.002], [.191, .102, 0], [.227, .054, .010], [.261, -.005, .015]];
-  const curve = new THREE.CatmullRomCurve3(pts.map(([x, y, z]) => new THREE.Vector3(x * side, y, z)), false, 'centripetal');
+export function sleeve(side, hole, { long = false, sport = false } = {}) {
+  const rootCenter = new THREE.Vector3();
+  for (let i = 0; i < 32; i++) rootCenter.add(new THREE.Vector3(...hole.at(i * TAU / 32)));
+  rootCenter.multiplyScalar(1 / 32);
+  const cut = long
+    ? [[.020, -.036, -.004], [.039, -.109, -.010], [.046, -.215, -.002], [.044, -.317, .015], [.038, -.395, .024]]
+    : sport
+      ? [[.025, -.026, -.004], [.049, -.061, -.006], [.074, -.105, -.009], [.085, -.128, -.007]]
+      : [[.032, -.014, -.004], [.058, -.042, -.012], [.079, -.071, -.017], [.095, -.105, -.018]];
+  const points = cut.map(([x, y, z]) => rootCenter.clone().add(new THREE.Vector3(x * side, y, z)));
+  const curve = new THREE.CatmullRomCurve3([rootCenter, ...points], false, 'centripetal');
   const frames = Array.from({length: 65}, (_, i) => {
     const v = i / 64;
     const center = curve.getPointAt(v);
@@ -312,33 +340,36 @@ export function sleeve(side, hole, { long = false } = {}) {
     if (fraction === 1) return b;
     return { center: a.center.clone().lerp(b.center, fraction), front: a.front.clone().lerp(b.front, fraction), upper: a.upper.clone().lerp(b.upper, fraction) };
   }
-  const endWidth = long ? .045 : .060;
-  const endDepth = long ? .035 : .043;
+  const rootWidth = long ? .080 : .071, rootDepth = long ? .064 : .060;
+  const endWidth = long ? .043 : sport ? .053 : .057;
+  const endDepth = long ? .029 : sport ? .036 : .034;
   const shell = (u, v) => {
     const angle = u * TAU;
     const frame = sleeveFrame(v);
     const folds = sstep(.27, .44, v) * (1 - sstep(.89, 1, v));
     const sideWeight = .25 + .75 * Math.pow(Math.abs(Math.cos(angle)), 1.8);
     const pinch = (
-      Math.sin(v * (long ? 24 : 19) + 2.8 * Math.cos(angle) + side * .7) * .62
-      + Math.sin(v * 17 - 2.4 * Math.sin(angle)) * .38
-      + vnoise(v * 11, angle * 1.6) * .19
+      Math.sin(v * (long ? 14 : 17) + 2.8 * Math.cos(angle) + side * .7) * .61
+      + Math.sin(v * 12 - 2.4 * Math.sin(angle)) * .25
+      + vnoise(v * 11, angle * 1.6) * .11
     ) * folds * sideWeight;
-    const amplitude = long ? .0075 : .0034;
-    const elbow = long ? .0063 * (
-      crease(v - .64 - .095 * Math.cos(angle) + side * .023, .060)
-      - .43 * crease(v - .719 - .089 * Math.cos(angle) + side * .019, .063)
-    ) : .0019 * crease(v - .74 + .11 * Math.cos(angle), .107);
-    const gathers = (long ? .0018 : .0008) * crease(v - .91, .11) * Math.cos(angle * 5 + v * 10);
-    const width = lerp(long ? .092 : .087, endWidth, v) + amplitude * pinch + elbow + gathers;
-    const depth = lerp(long ? .070 : .073, endDepth, v) + amplitude * 1.4 * pinch + elbow * .56 + gathers;
-    const root = hole.at(angle, 1.005);
-    const end = outer(frame, angle, depth, width);
-    const fade = sstep(0, long ? .34 : .62, v);
-    return root.map((value, i) => lerp(value, end[i], fade));
+    const amplitude = long ? .0038 : .0017;
+    const elbow = long ? .0057 * (.52 - .48 * Math.cos(angle)) * (
+      crease(v - .57 - .11 * Math.cos(angle) + side * .031, .064)
+      - .49 * crease(v - .65 - .077 * Math.cos(angle) + side * .021, .077)
+    ) : .0012 * crease(v - .74 + .11 * Math.cos(angle), .107);
+    const gathers = (long ? .0018 : .0008) * crease(v - .89, .11) * (1 - sstep(.94, 1, v)) * Math.cos(angle * 5 + v * 10);
+    const finish = Math.pow(v, long ? 1.15 : .82);
+    const width = lerp(rootWidth, endWidth, finish) + amplitude * pinch + elbow + gathers;
+    const depth = lerp(rootDepth, endDepth, finish) + amplitude * 1.4 * pinch + elbow * .56 + gathers;
+    const root = hole.at(angle, 1.001);
+    const sourceRing = outer(frames[0], angle, rootDepth, rootWidth);
+    const currentRing = outer(frame, angle, depth, width);
+    const seamFit = 1 - sstep(.0, long ? .26 : .60, v);
+    return currentRing.map((value, axis) => value + (root[axis] - sourceRing[axis]) * seamFit);
   };
   const finish = frames[64];
-  const trimWidth = long ? .048 : .011;
+  const trimWidth = long ? .045 : .009;
   const edge = (u, v) => {
     const angle = u * TAU;
     const x = v <= .72 ? v / .72 : 1 - (v - .72) * 2;
@@ -357,7 +388,7 @@ export function sleeve(side, hole, { long = false } = {}) {
   return {
     shell: surface(96, 64, shell, {
       wrapU: true, uvFn: (u, v) => [orientation(u), 1 - v],
-      shade: (u, v) => 1 - (.11 + .13 * Math.max(0, -Math.sin(TAU * u))) * (1 - sstep(.06, .30, v)),
+      shade: (u, v) => 1 - (.055 + .10 * Math.max(0, -Math.sin(TAU * u))) * (1 - sstep(.06, .30, v)),
     }),
     trim: surface(96, 18, edge, {
       wrapU: true, uvFn: (u, v) => [orientation(u), v],
@@ -380,29 +411,30 @@ export function boundArmhole(hole) {
 /* Two hood panels form a structured opening and a rounded crown, with a sewn lining. */
 export function hood(fn) {
   const shell = (u, v) => {
-    const theta = Math.PI + (u * 2 - 1) * .84 * Math.PI;
+    const theta = Math.PI + (u * 2 - 1) * .944 * Math.PI;
     const neck = fn((theta / TAU + .25) % 1, 1);
-    const arch = Math.pow(Math.sin(Math.PI * u), .88);
+    const arch = Math.pow(Math.sin(Math.PI * u), .86);
     const side = Math.cos(Math.PI * u);
     const edge = [
-      side * (.055 + .077 * arch),
-      .210 + .169 * arch + .009 * side,
-      .110 - .087 * arch + .005 * side,
+      side * (.019 + .112 * arch),
+      .198 + .178 * arch + .008 * side,
+      .091 - .059 * arch + .007 * side,
     ];
     const back = [
-      side * (.076 + .091 * arch),
-      neck[1] + .039 * arch - .025,
-      .092 - .285 * arch,
+      neck[0] * 1.47 + .029 * side,
+      neck[1] + .095 * arch - .030,
+      .086 - .257 * arch,
     ];
     const crown = [
-      side * (.068 + .104 * arch),
-      .255 + .213 * arch - .005 * side,
-      .097 - .274 * arch,
+      side * (.042 + .146 * arch),
+      .236 + .239 * arch - .006 * side,
+      .078 - .180 * arch,
     ];
     const weight = 1 - v;
     const point = neck.map((value, axis) => value * weight ** 3 + 3 * back[axis] * weight ** 2 * v
       + 3 * crown[axis] * weight * v ** 2 + edge[axis] * v ** 3);
-    const lowerFold = .0039 * arch * Math.sin(u * TAU * 4 + v * 12.2) * sstep(0, .26, v) * (1 - sstep(.37, .84, v));
+    const lowerFold = .0072 * arch * (crease(u - .20 - .15 * v, .063) - .86 * crease(u - .32 - .11 * v, .054))
+      * sstep(.04, .30, v) * (1 - sstep(.62, .96, v));
     const crownSeam = .0014 * crease(u - .5, .036) * Math.sin(v * Math.PI);
     const turnedRim = .0033 * crease(v - .966, .040);
     point[0] += side * turnedRim * .46;
@@ -445,17 +477,19 @@ export function hood(fn) {
       surface(60, 4, (v, depth) => join(0, v, depth)),
       surface(60, 4, (v, depth) => join(1, v, depth)),
     ],
-    eyelet: side => shell(side < 0 ? .916 : .084, .91),
+    eyelet: side => shell(side < 0 ? .95 : .05, .945),
   };
 }
 
-/* The short shares one hip edge with both legs, joined along a curved crotch seam. */
+/* The short shares one hip edge with both legs, joined along a curved crotch seam.
+   The outseam and leg opening follow the MakeHuman CC0 athletic shorts fit. */
 export function short() {
   const hip = (th, v) => {
     const sx = Math.sin(th), sz = Math.cos(th);
     const gather = Math.sin(th * 28) * .0018 * Math.pow(1 - v, 3);
     const fold = Math.sin(th * 9 + v * 4) * .0026 * Math.sin(Math.PI * v);
-    return [(lerp(.172, .186, v) + gather + fold) * sx, -.104 * v, (lerp(.107, .119, v) + gather + fold) * sz];
+    const depth = sz >= 0 ? lerp(.098, .109, v) : lerp(.113, .103, v);
+    return [(lerp(.165, .184, v) + gather + fold) * sx, -.108 * v + .007 * v * sz, (depth + gather + fold) * sz];
   };
   const top = surface(140, 34, (u, v) => hip((u - .25) * TAU, v), {
     wrapU: true, uvFn: (u, v) => [u, 1 - .31 * v],
@@ -464,16 +498,17 @@ export function short() {
     const run = (u, v, inside = 0) => {
       const a = u * TAU, sine = Math.sin(a), cosine = Math.cos(a);
       const inner = Math.max(0, -sine);
-      const join = inner > 0 ? [0, -.104 - inner * .051, .119 * cosine] : hip(side * a, 1);
+      const outerJoin = hip(side * a, 1);
+      const join = inner > 0 ? [0, outerJoin[1] - inner * .053, outerJoin[2]] : outerJoin;
       const drape = (Math.sin(a * 5 + side * 1.2 + .8 * v) * .0035 + vnoise(a * 2.3, v * 4) * .002) * v;
       const edge = [
-        side * (.095 + sine * (.090 + drape - inside)),
-        -.306 + .004 * Math.sin(a * 3 + side) + sine * -.004,
-        cosine * (.089 + drape - inside) - .008,
+        side * (.106 + sine * (.090 + drape - inside)),
+        -.304 + .0045 * Math.sin(a * 2 + side) + sine * -.007,
+        cosine * (.071 + drape - inside) + .021 - .008 * side,
       ];
-      const blend = sstep(0, 1, v);
-      // Blend the curved cut into the leg while retaining the exact sewn edge at v=0.
-      return [lerp(join[0], edge[0], blend), lerp(join[1], edge[1], v), lerp(join[2], edge[2], blend)];
+      const fall = v * (.64 + .36 * v);
+      const fold = .0043 * crease(Math.abs(sine) - .12 - .22 * v, .16) * Math.sin(Math.PI * v);
+      return [lerp(join[0], edge[0], fall), lerp(join[1], edge[1], v), lerp(join[2], edge[2], fall) + fold * cosine];
     };
     const uv = (u, v) => [.25 + side * u, .69 * (1 - v)];
     const seam = [.932, .958].map(v => trace(68, u => {
@@ -490,7 +525,16 @@ export function short() {
     const th = (u - .25) * TAU;
     const gather = (.6 + .4 * Math.sin(v * Math.PI)) * (.0013 * Math.sin(th * 35) + .0007 * Math.cos(th * 49));
     const roll = .0011 * Math.sin(v * Math.PI) + .00065 * Math.cos(v * TAU * 2);
-    return [(0.173 + roll + gather) * Math.sin(th), -.001 + .035 * v, (0.108 + roll + gather) * Math.cos(th)];
+    const depth = Math.cos(th) >= 0 ? .098 : .113;
+    const shoulder = hip(th, .025);
+    const top = .0008 + .032 * v;
+    const foldedEdge = sstep(.79, 1, v);
+    const inset = 1 + .018 - .048 * foldedEdge;
+    return [
+      (shoulder[0] + (roll + gather) * Math.sin(th)) * inset,
+      top - .004 * foldedEdge * foldedEdge,
+      (depth + roll + gather) * Math.cos(th) * inset,
+    ];
   }, {wrapU: true});
   return { top, left: leg(-1), right: leg(1), band };
 }
@@ -517,10 +561,12 @@ export function waveFlag(geo, t) {
   for (let i = 0; i < positions.count; i++) {
     const x = b[i * 3], y = b[i * 3 + 1], k = clamp(x / w, 0, 1);
     const softness = Math.pow(k, .83);
-    const ripple = .009 * Math.sin(k * 22 - t * 2.35 + y * 11.2);
-    const z = softness * (.063 * Math.sin(k * 8.4 - t * 1.31 + y * 2.8) + .020 * Math.sin(k * 15.2 - t * 2.05 + y * 6.1) + ripple);
-    const fall = k * k * (.062 + .019 * Math.sin(t * .57 - k * 2));
-    positions.setXYZ(i, x - .040 * k * k, y - fall + softness * .018 * Math.sin(k * 7.3 - t * 1.21), z);
+    const ripple = .007 * k * Math.sin(k * 26 - t * 2.35 + y * 12);
+    const billow = .066 * Math.sin(k * 7.2 - t * 1.21 + y * 2.3);
+    const trailingEdge = .019 * Math.sin(k * 16 - t * 1.9 + y * 5.9);
+    const z = w * softness * (billow + trailingEdge + ripple);
+    const fall = w * k * k * (.055 + .018 * Math.sin(t * .63 - k * 2));
+    positions.setXYZ(i, x - w * .031 * k * k, y - fall + w * softness * .017 * Math.sin(k * 7.3 - t * 1.21), z);
   }
   positions.needsUpdate = true;
   geo.computeVertexNormals();
@@ -529,18 +575,21 @@ export function waveFlag(geo, t) {
 /* Low-profile six-panel trucker cap with a curved sandwich visor and rear closure. */
 export const CAP_SEAMS = Array.from({ length: 6 }, (_, i) => .75 - 1 / 12 + i / 6);
 export function cap() {
-  const RX = .105, RZ = .118, RY = .104;
+  // The CC0 Grab3D cap provides a dimensional check for the crown and visor.
+  // https://grab3d.com/models/props/baseball-cap/
+  const RX = .102, RZ = .112, RY = .117;
   const crownAt = (u, v) => {
     const a = u * TAU, b = v * Math.PI / 2;
     const z = Math.sin(a);
     const front = Math.max(0, z);
-    const taper = Math.pow(Math.max(0, Math.cos(b)), .73);
+    const rear = Math.max(0, -z);
+    const taper = Math.pow(Math.max(0, Math.cos(b)), .83 - .30 * front);
     const panel = Math.pow(.5 + .5 * Math.cos((u - .25) * 6 * TAU), 2.5) * .0027 * Math.sin(Math.PI * v);
     const pinch = Math.sin(a * 11 + 2 * v) * .0012 * Math.exp(-Math.pow((v - .2) / .18, 2));
-    const shape = taper * (1 + .12 * front * Math.sin(v * Math.PI));
-    const baseY = -.006 + .013 * Math.pow(Math.cos(a), 2) + .004 * z;
+    const shape = taper * (1 + .08 * front * Math.sin(v * Math.PI) - .05 * rear * Math.sin(v * Math.PI));
+    const baseY = -.006 + .016 * Math.pow(Math.cos(a), 2) + .006 * z;
     return [(RX * shape - panel + pinch) * Math.cos(a),
-      baseY * (1 - v) + RY * Math.sin(b) * (1 + .06 * front * (1 - v)),
+      baseY * (1 - v) + RY * Math.sin(b) * (1 + .23 * front * (1 - v) - .12 * rear * (1 - v)),
       (RZ * shape - panel + pinch) * z - .024 * Math.pow(v, 1.25)];
   };
   const cut = u => Math.sqrt(Math.max(0, 1 - Math.pow((u - .75) / .088, 2))) * .245;
@@ -561,14 +610,14 @@ export function cap() {
     return outer;
   }, {wrapU: true});
   const visorFn = (u, v, layer = 0) => {
-    const a = lerp(.33, Math.PI - .33, u);
+    const a = lerp(.25, Math.PI - .25, u);
     const base = crownAt(a / TAU, 0.025);
     const curve = Math.pow(Math.sin(u * Math.PI), .61);
     const cosine = Math.cos(a);
     return [
-      base[0] * (1 - .15 * curve * v * Math.abs(cosine)),
-      base[1] - (.018 + .037 * cosine * cosine) * v * curve - layer,
-      base[2] + .087 * curve * v,
+      base[0] * (1 - .095 * curve * v * Math.abs(cosine)),
+      base[1] - (.013 + .063 * cosine * cosine) * v * curve - layer,
+      base[2] + .087 * curve * v * (1 - .17 * cosine * cosine),
     ];
   };
   const visorTop = surface(98, 26, visorFn);
@@ -674,8 +723,8 @@ export function pocket(fn, side) {
   const uv = pocketUV(side);
   const panel = (s, t, offset = 0) => {
     const [u, v] = uv(s, t);
-    const raised = .0011 + .0046 * Math.pow(1 - s, 4) * Math.sin(Math.PI * t)
-      + .0041 * Math.sin(Math.PI * s) * Math.sin(Math.PI * t)
+    const raised = .0009 + .0034 * Math.pow(1 - s, 4) * Math.sin(Math.PI * t)
+      + .0028 * Math.sin(Math.PI * s) * Math.sin(Math.PI * t)
       + .0015 * crease(s - .044, .032);
     return liftFromAxis(fn(u, v), raised + offset);
   };

@@ -213,11 +213,10 @@ export function torsoCanvas(cv, st, { vOf, product }) {
     fitText(g, sub, s => `600 ${s}px "Barlow Condensed"`, 250 * sx, 25 * sx); g.fillText(sub, 287 * sx, Y(0.085) + 34 * sx);
     if (st.logoImg) drawLogo(g, st.logoImg, 680 * sx, Y(0.1), 110 * sx); else imMark(g, 680 * sx, Y(0.1), 42 * sx);
   } else {
-    // Leave room at the zipper and keep the stitched shoulder mark above the name.
+    // Leave room at the zipper for the name and optional uploaded artwork.
     g.textAlign = 'center'; g.fillStyle = t;
     fitText(g, nm, s => `${s}px Anton`, 150 * sx, 54 * sx); g.fillText(nm, 338 * sx, Y(0.08));
-    if (st.logoImg) drawLogo(g, st.logoImg, 650 * sx, Y(0.095), 100 * sx); else imMark(g, 320 * sx, Y(0.149), 32 * sx);
-
+    if (st.logoImg) drawLogo(g, st.logoImg, 650 * sx, Y(0.095), 100 * sx);
   }
   // double-needle hem + side seams (subtle, like real cut-and-sewn garments)
   if (product !== 'campera') stitch(g, sx, base, () => { [0.016, 0.022].forEach(d => { g.beginPath(); g.moveTo(0, Y(-0.34 + d)); g.lineTo(W, Y(-0.34 + d)); g.stroke(); }); });
@@ -244,7 +243,7 @@ export function torsoCanvas(cv, st, { vOf, product }) {
     g.fillText(st.escuela.toUpperCase(), 1536 * sx, Yb(0.068));
   }
   // brand tag below back collar
-  imMark(g, 1536 * sx, Y(0.195), 13 * sx);
+  if (product !== 'campera') imMark(g, 1536 * sx, Y(0.195), 13 * sx);
 }
 
 export function plainCanvas(cv, st, zone, { pattern = false, seed = 5 } = {}) {
