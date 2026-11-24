@@ -129,25 +129,25 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       width: [[-.34,.194],[-.236,.188],[-.139,.181],[-.043,.184],[.084,.197],[.205,.205]],
       frontDepth: [[-.34,.112],[-.23,.124],[-.075,.120],[.079,.113],[.205,.080]],
       backDepth: [[-.34,.114],[-.23,.094],[-.075,.084],[.079,.102],[.205,.080]],
-      neckK: .35, neckKZ: .74, neckDrop: .056, slope: .21, q0: .62, wrinkle: 1,
+      neckK: .35, neckKZ: .74, neckDrop: .056, slope: .23, wrinkle: 1.12,
     },
     conjunto: {
       width: [[-.34,.148],[-.266,.171],[-.196,.176],[-.062,.186],[.094,.205],[.205,.202]],
       frontDepth: [[-.34,.062],[-.256,.080],[-.18,.094],[.023,.111],[.126,.111],[.205,.076]],
       backDepth: [[-.34,.060],[-.263,.069],[-.17,.078],[.023,.093],[.126,.094],[.205,.068]],
-      neckK: .35, neckKZ: .73, neckDrop: .062, slope: .23, q0: .62, wrinkle: .88,
+      neckK: .35, neckKZ: .73, neckDrop: .062, slope: .26, wrinkle: .92,
     },
     musculosa: {
-      width: [[-.34,.192],[-.2,.173],[-.053,.182],[.103,.199],[.205,.194]],
-      frontDepth: [[-.34,.075],[-.169,.086],[.026,.113],[.126,.104],[.205,.075]],
-      backDepth: [[-.34,.069],[-.169,.075],[.026,.093],[.126,.089],[.205,.071]],
-      neckK: .48, neckKZ: .76, neckDrop: .102, slope: .21, q0: .58, wrinkle: 1.05, tank: true,
+      width: [[-.34,.177],[-.246,.170],[-.100,.159],[.045,.180],[.144,.191],[.205,.193]],
+      frontDepth: [[-.34,.056],[-.169,.067],[.026,.096],[.126,.097],[.205,.074]],
+      backDepth: [[-.34,.051],[-.169,.064],[.026,.080],[.126,.082],[.205,.062]],
+      neckK: .45, neckKZ: .76, neckDrop: .118, slope: .23, wrinkle: .92, tank: true,
     },
     campera: {
-      width: [[-.34,.185],[-.289,.197],[-.172,.197],[-.038,.191],[.105,.214],[.205,.216]],
-      frontDepth: [[-.34,.091],[-.25,.112],[-.09,.111],[.103,.117],[.205,.089]],
-      backDepth: [[-.34,.105],[-.21,.105],[-.045,.108],[.107,.105],[.205,.088]],
-      neckK: .41, neckKZ: .75, neckDrop: .052, slope: .24, q0: .68, wrinkle: .67, heavy: true,
+      width: [[-.34,.190],[-.276,.208],[-.172,.210],[-.038,.204],[.105,.217],[.205,.220]],
+      frontDepth: [[-.34,.091],[-.25,.112],[-.09,.107],[.103,.116],[.205,.089]],
+      backDepth: [[-.34,.103],[-.21,.101],[-.045,.102],[.107,.104],[.205,.085]],
+      neckK: .42, neckKZ: .75, neckDrop: .056, slope: .26, wrinkle: .92, heavy: true,
     },
   };
   const tailoring = new Map();
@@ -200,15 +200,21 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       },
     });
     const bodyMaterial = parts.torso = fabricMat(texes.torso);
+    if (tank) {
+      bodyMaterial.onBeforeCompile = shader => {
+        shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>',
+          '#include <map_fragment>\nif (!gl_FrontFacing) diffuseColor.rgb *= 0.57;');
+      };
+    }
     const trim = parts.punos = colorMat(state.colors.punos);
     const facing = parts.facing = fabricMat(null);
     group.add(mesh(body, bodyMaterial));
-    for (const atNeck of long ? [false] : [true, false]) {
+    for (const atNeck of [true, false]) {
       const inside = mesh(G.facing(fn, atNeck), facing);
       inside.castShadow = false;
       group.add(inside);
     }
-    if (!long) group.add(mesh(G.collar(fn, { h: tank ? .009 : .013 }), trim));
+    if (!long) group.add(mesh(G.collar(fn, { h: tank ? .008 : .017 }), trim));
 
     const bodySeams = holes.map(hole => hole.threadPath);
     const trimSeams = [];
@@ -232,7 +238,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
 
     if (long) {
       const hood = G.hood(fn);
-      const hoodMaterial = parts.hood = fabricMat(texes.hood, { side: THREE.FrontSide });
+      const hoodMaterial = parts.hood = fabricMat(texes.hood);
       const lining = parts.lining = fabricMat(null);
       const interior = mesh(hood.inner, lining);
       interior.castShadow = false;

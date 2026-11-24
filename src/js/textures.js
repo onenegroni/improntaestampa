@@ -206,14 +206,23 @@ export function torsoCanvas(cv, st, { vOf, product }) {
   // front chest
   const nm = (st.nombre || '').toUpperCase();
   if (product !== 'campera') {
+    const sleeveless = product === 'musculosa';
+    const nameY = Y(sleeveless ? .061 : .085);
     g.textAlign = 'left'; g.fillStyle = t;
-    fitText(g, nm, s => `${s}px Anton`, 200 * sx, 78 * sx); if (st.preset !== 'liso' && st.preset !== 'degrade' && st.preset !== 'galactico') { g.save(); g.lineJoin = 'round'; g.strokeStyle = base; g.lineWidth = 9 * sx; g.strokeText(nm, 285 * sx, Y(0.085)); g.restore(); } g.fillText(nm, 285 * sx, Y(0.085));
+    fitText(g, nm, s => `${s}px Anton`, 200 * sx, (sleeveless ? 69 : 78) * sx);
+    if (st.preset !== 'liso' && st.preset !== 'degrade' && st.preset !== 'galactico') {
+      g.save(); g.lineJoin = 'round'; g.strokeStyle = base; g.lineWidth = 9 * sx;
+      g.strokeText(nm, 285 * sx, nameY); g.restore();
+    }
+    g.fillText(nm, 285 * sx, nameY);
     g.font = `600 ${21 * sx}px "Barlow Condensed"`; g.fillStyle = mix(t, base, 0.35);
     const sub = [st.espalda, st.escuela].filter(Boolean).join(' · ').toUpperCase();
-    fitText(g, sub, s => `600 ${s}px "Barlow Condensed"`, 250 * sx, 25 * sx); g.fillText(sub, 287 * sx, Y(0.085) + 34 * sx);
-    if (st.logoImg) drawLogo(g, st.logoImg, 680 * sx, Y(0.1), 110 * sx); else imMark(g, 680 * sx, Y(0.1), 42 * sx);
+    fitText(g, sub, s => `600 ${s}px "Barlow Condensed"`, 250 * sx, 25 * sx);
+    g.fillText(sub, 287 * sx, nameY + 34 * sx);
+    const logoY = Y(sleeveless ? .074 : .1);
+    if (st.logoImg) drawLogo(g, st.logoImg, 680 * sx, logoY, 110 * sx);
+    else imMark(g, 680 * sx, logoY, 42 * sx);
   } else {
-    // Leave room at the zipper for the name and optional uploaded artwork.
     g.textAlign = 'center'; g.fillStyle = t;
     fitText(g, nm, s => `${s}px Anton`, 150 * sx, 54 * sx); g.fillText(nm, 338 * sx, Y(0.08));
     if (st.logoImg) drawLogo(g, st.logoImg, 650 * sx, Y(0.095), 100 * sx);
@@ -221,29 +230,30 @@ export function torsoCanvas(cv, st, { vOf, product }) {
   // double-needle hem + side seams (subtle, like real cut-and-sewn garments)
   if (product !== 'campera') stitch(g, sx, base, () => { [0.016, 0.022].forEach(d => { g.beginPath(); g.moveTo(0, Y(-0.34 + d)); g.lineTo(W, Y(-0.34 + d)); g.stroke(); }); });
   g.save(); g.globalAlpha = 0.22; g.strokeStyle = mix(base, '#000000', 0.55); g.lineWidth = 2.5 * sx; [0, W / 2, W].forEach(x => { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }); g.restore();
-  const Yb = y => Y(y + (product === 'campera' ? -0.04 : 0));
+  const jacket = product === 'campera';
+  const numberY = Y(jacket ? -.118 : -.065);
   // back
   g.textAlign = 'center'; g.fillStyle = t;
   const busy = st.preset !== 'liso' && st.preset !== 'degrade';
   const outl = (txt, x, y, w) => { if (busy) { g.save(); g.lineJoin = 'round'; g.strokeStyle = base; g.lineWidth = w * sx; g.strokeText(txt, x, y); g.restore(); } g.fillText(txt, x, y); };
-  fitText(g, nm, s => `${s}px Anton`, 420 * sx, 76 * sx); outl(nm, 1536 * sx, Yb(0.122), 10);
+  fitText(g, nm, s => `${s}px Anton`, 420 * sx, (jacket ? 60 : 76) * sx); outl(nm, 1536 * sx, Y(jacket ? .008 : .122), 10);
   if (st.numero) {
     const num = String(st.numero).slice(0, 3);
-    fitText(g, num, s => `${s}px Anton`, 460 * sx, 300 * sx); g.lineWidth = 9 * sx;
+    fitText(g, num, s => `${s}px Anton`, 460 * sx, (jacket ? 206 : 300) * sx); g.lineWidth = 9 * sx;
     const ac = lum(st.colors.acento) - lum(base); g.strokeStyle = Math.abs(ac) < 0.08 ? t : st.colors.acento;
-    if (st.preset === 'rayas') { g.lineJoin = 'round'; g.strokeStyle = base; g.lineWidth = 16 * sx; g.strokeText(num, 1536 * sx, Yb(-0.065)); g.fillStyle = t; g.fillText(num, 1536 * sx, Yb(-0.065)); }
-    else { g.fillStyle = base === '#0a0f2a' ? 'rgba(10,15,42,.6)' : base; g.fillText(num, 1536 * sx, Yb(-0.065)); g.strokeText(num, 1536 * sx, Yb(-0.065)); }
+    if (st.preset === 'rayas') { g.lineJoin = 'round'; g.strokeStyle = base; g.lineWidth = 16 * sx; g.strokeText(num, 1536 * sx, numberY); g.fillStyle = t; g.fillText(num, 1536 * sx, numberY); }
+    else { g.fillStyle = base === '#0a0f2a' ? 'rgba(10,15,42,.6)' : base; g.fillText(num, 1536 * sx, numberY); g.strokeText(num, 1536 * sx, numberY); }
   }
-  if (st.espalda) { g.fillStyle = t; fitText(g, st.espalda.toUpperCase(), s => `${s}px Anton`, 520 * sx, 124 * sx); outl(st.espalda.toUpperCase(), 1536 * sx, Yb(-0.156), 12); }
+  if (st.espalda) { g.fillStyle = t; fitText(g, st.espalda.toUpperCase(), s => `${s}px Anton`, 520 * sx, (jacket ? 110 : 124) * sx); outl(st.espalda.toUpperCase(), 1536 * sx, Y(jacket ? -.193 : -.156), 12); }
   const frase = (st.frase || '').toUpperCase();
-  if (frase) { g.fillStyle = mix(t, base, 0.18); fitText(g, frase, s => `600 ${s}px "Barlow Condensed"`, 640 * sx, 34 * sx); g.fillText(frase, 1536 * sx, Yb(-0.19)); }
-  if (product === 'campera' && st.escuela) {
+  if (frase) { g.fillStyle = mix(t, base, 0.18); fitText(g, frase, s => `600 ${s}px "Barlow Condensed"`, 640 * sx, 34 * sx); g.fillText(frase, 1536 * sx, Y(jacket ? -.259 : -.190)); }
+  if (jacket && st.escuela) {
     g.fillStyle = t;
     fitText(g, st.escuela.toUpperCase(), size => `600 ${size}px "Barlow Condensed"`, 530 * sx, 29 * sx);
-    g.fillText(st.escuela.toUpperCase(), 1536 * sx, Yb(0.068));
+    g.fillText(st.escuela.toUpperCase(), 1536 * sx, Y(-.227));
   }
   // brand tag below back collar
-  if (product !== 'campera') imMark(g, 1536 * sx, Y(0.195), 13 * sx);
+  if (!jacket) imMark(g, 1536 * sx, Y(0.195), 13 * sx);
 }
 
 export function plainCanvas(cv, st, zone, { pattern = false, seed = 5 } = {}) {

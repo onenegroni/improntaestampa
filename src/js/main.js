@@ -454,7 +454,7 @@ function setProduct(product) {
 /* ---------- lazy 3D ---------- */
 // The 3D studio ships as a classic script (js/studio.js) so the site also works when opened from file://.
 let api = null, loading = null, failed = false;
-const FALLBACK_IMG = { remera: 'img/studio-detail-poster.webp', campera: 'img/show-egresados.webp', conjunto: 'img/show-deportivos.webp', musculosa: 'img/preset-zumba.webp', bandera: 'img/show-banderas.webp', gorra: 'img/show-gorras.webp' };
+const FALLBACK_IMG = { remera: 'img/studio-shoulder-poster.webp', campera: 'img/catalog-egresados.webp', conjunto: 'img/catalog-deportivos.webp', musculosa: 'img/preset-zumba.webp', bandera: 'img/catalog-banderas.webp', gorra: 'img/catalog-gorras.webp' };
 function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.async = true; s.onload = res; s.onerror = () => rej(new Error('No se pudo cargar ' + src)); document.head.appendChild(s); }); }
 function webglOK() { try { const c = document.createElement('canvas'); const gl = window.WebGLRenderingContext && (c.getContext('webgl2') || c.getContext('webgl')); if (!gl) return false; const x = gl.getExtension('WEBGL_lose_context'); x && x.loseContext(); return true; } catch (e) { return false; } }
 function showFallback(reason) {
@@ -666,11 +666,6 @@ $$('[data-product]').forEach(a => a.addEventListener('click', () => { load3D(); 
 
 /* ---------- nav, menu, reveal, parallax ---------- */
 const nav = $('#nav'), fab = $('#fabWa'), heroEl = $('#hero'); const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-// sticky product showcase: the item crossing the middle of the viewport drives the image on the left
-{ const imgs = $$('.show-media img'), items = $$('.pitem'); let cur = -1;
-  const setI = i => { if (i === cur) return; cur = i; imgs.forEach(im => im.classList.toggle('on', +im.dataset.i === i)); };
-  const sio = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) setI(+e.target.dataset.i); }), { rootMargin: '-45% 0px -45% 0px' });
-  items.forEach(it => sio.observe(it)); setI(0); }
 const fabHide = new Set();
 new IntersectionObserver(es => { es.forEach(e => e.isIntersecting ? fabHide.add(e.target) : fabHide.delete(e.target)); fab.classList.toggle('show', scrollY > innerHeight * 0.9 && !fabHide.size); }, { rootMargin: '-15% 0px -15% 0px' }).observe($('#contacto'));
 document.querySelectorAll('.config .panel, footer').forEach(el => fabHide && new IntersectionObserver(es => { es.forEach(e => e.isIntersecting ? fabHide.add(e.target) : fabHide.delete(e.target)); fab.classList.toggle('show', scrollY > innerHeight * 0.9 && !fabHide.size); }).observe(el));
