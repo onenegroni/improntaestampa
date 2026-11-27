@@ -1,26 +1,16 @@
 // Impronta Estampa — page logic (UI, lazy 3D, gallery, WhatsApp, renders)
 import { createWheel, normHex } from './colorwheel.js';
 import { segments } from '../data/catalogue.json';
+import { PRODUCTS as P, MATERIALS, TECHNIQUES, LOCAL_DTF, CONSULT, optionsFor, compatiblePrint } from './product-data.js';
 const CANONICAL_ORIGIN = 'https://improntaestampa.pages.dev/';
 const WA = '5492644127431';
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const PALETTE = [['#141414', 'Negro'], ['#f2efe9', 'Blanco'], ['#6b6b6b', 'Gris'], ['#b5141a', 'Rojo Impronta'], ['#e8742a', 'Naranja'], ['#f2c230', 'Amarillo'], ['#8fd3cf', 'Aqua'], ['#9fc8e8', 'Celeste'], ['#1e2f5c', 'Azul marino'], ['#5b2a86', 'Violeta']];
 const cname = h => (PALETTE.find(p => p[0] === h) || [0, h])[1];
-const SIZES = ['T4', 'T6', 'T8', 'T10', 'T12', 'T14', 'T16', 'S', 'M', 'L', 'XL', 'XXL'];
-const TELAS = { deportiva: ['Deportiva', 'Liviana, seca rápido'], modal: ['Modal', 'Suave, más caída'], frizado: ['Acrílico frizado', 'Abriga, interior suave'] };
 const PRESETS_P = { galactico: 'Galáctico', splash: 'Splash', degrade: 'Degradé', rayas: 'Rayas', tiedye: 'Tie-dye', manitos: 'Manitos', camuflaje: 'Camuflaje', geometrico: 'Geométrico', liso: 'Liso' };
 const PCOL = ['acento', 'acento2', 'acento3'];
-const P = {
-  remera: { label: 'Remera', crumb: 'Remera egresados', telas: ['deportiva', 'modal'], zones: { cuerpo: 'Cuerpo', mangas: 'Mangas', capucha: null, punos: 'Cuello y puños' }, frase: 'Más que una remera, un recuerdo para siempre' },
-  campera: { label: 'Campera', crumb: 'Campera con capucha', telas: ['frizado'], zones: { cuerpo: 'Cuerpo', mangas: 'Mangas', capucha: 'Capucha', punos: 'Puños y cintura' }, frase: 'Más que una campera, un recuerdo para siempre' },
-  conjunto: { label: 'Conjunto deportivo', crumb: 'Conjunto deportivo', telas: ['deportiva'], zones: { cuerpo: 'Remera', short: 'Short', mangas: 'Mangas', capucha: null, punos: 'Cuello y cintura' }, frase: '' },
-  musculosa: { label: 'Musculosa', crumb: 'Musculosa', telas: ['deportiva', 'modal'], zones: { cuerpo: 'Cuerpo', mangas: null, capucha: null, punos: 'Vivos' }, frase: '' },
-  short: { label: 'Short', crumb: 'Short deportivo', telas: ['deportiva'], zones: { short: 'Short', punos: 'Cintura' }, frase: '' },
-  bandera: { label: 'Bandera', crumb: 'Bandera', telas: [], fixed: 'Poliéster sublimable', zones: { cuerpo: 'Fondo', mangas: null, capucha: null, punos: null }, sizes: ['90×60 cm', '150×90 cm', '200×100 cm'], frase: '' },
-  gorra: { label: 'Gorra', crumb: 'Gorra trucker de cinco gajos', telas: [], fixed: 'Frente sublimado y malla', zones: { cuerpo: 'Frente', mangas: 'Visera', malla: 'Malla', capucha: null, punos: 'Botón y vivos' }, sizes: ['Infantil ajustable', 'Adulto ajustable'], frase: '' },
-};
 const ZONES = ['cuerpo', 'short', 'mangas', 'capucha', 'punos', 'malla'];
-const DEFAULT = { producto: 'remera', tela: 'deportiva', colors: { cuerpo: '#141414', short: '#141414', malla: '#141414', mangas: '#b5141a', capucha: '#141414', punos: '#f2efe9', acento: '#b5141a', acento2: '#f4f1ec', acento3: '#7a0d12' }, preset: 'splash', printAll: false, nombre: 'MELI', numero: '26', espalda: 'PROMO 26', escuela: 'ESCUELA SARMIENTO', frase: 'Más que una remera, un recuerdo para siempre', talle: 'M', cantidad: '30' };
+const DEFAULT = { segmento: 'primaria', producto: 'remera', tela: 'deportiva', colors: { cuerpo: '#141414', short: '#141414', malla: '#141414', mangas: '#b5141a', capucha: '#141414', punos: '#f2efe9', acento: '#b5141a', acento2: '#f4f1ec', acento3: '#7a0d12' }, preset: 'splash', printAll: false, nombre: 'MELI', numero: '26', espalda: 'PROMO 26', escuela: 'ESCUELA SARMIENTO', frase: 'Más que una remera, un recuerdo para siempre', talle: 'M', cantidad: '30' };
 const PRESETS = {
   promo26: {},
   galaxia: { producto: 'campera', tela: 'frizado', colors: { cuerpo: '#141414', mangas: '#141414', capucha: '#141414', punos: '#141414', acento: '#9fc8e8', acento2: '#6a2fa6', acento3: '#1f6fd1' }, preset: 'galactico', printAll: true, frase: 'Más que una campera, un recuerdo para siempre' },
@@ -37,7 +27,8 @@ if (openedDesign) {
   try {
     const data = JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(3).replace(/-/g, '+').replace(/_/g, '/')))));
     if (Object.prototype.hasOwnProperty.call(P, data.producto)) state.producto = data.producto;
-    if (Object.prototype.hasOwnProperty.call(TELAS, data.tela)) state.tela = data.tela;
+    if (Object.prototype.hasOwnProperty.call(MATERIALS, data.tela)) state.tela = data.tela;
+    if (Object.prototype.hasOwnProperty.call(segments, data.segmento)) state.segmento = data.segmento;
     if (Object.prototype.hasOwnProperty.call(PRESETS_P, data.preset)) state.preset = data.preset;
     const savedColors = data.colors || {};
     for (const key of Object.keys(state.colors)) state.colors[key] = normHex(savedColors[key]) || state.colors[key];
@@ -105,15 +96,16 @@ function buildPanel() {
     const icon = `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">${SHAPES[key]}</svg>`;
     $('#grp-producto .chips').appendChild(btn({ class: 'chip', 'data-v': key }, `${icon}<span>${label}</span>`));
   });
-  $('#grp-tela').innerHTML = '<h4>Tela</h4><p class="fixed-fabric" id="fixedFabric"></p><div class="fab" role="group" aria-label="Tela"></div>';
-  Object.entries(TELAS).forEach(([key, [name, description]]) => {
-    $('#grp-tela .fab').appendChild(btn({ 'data-v': key }, `<span>${name}</span><small>${description}</small>`));
+  $('#grp-tela').innerHTML = '<h4>Tela</h4><p class="fixed-fabric" id="fixedFabric"></p><div class="fab" role="group" aria-label="Tela"></div><p class="material-technique" id="materialTechnique"></p>';
+  Object.entries(MATERIALS).filter(([,material])=>material.status === 'disponible').forEach(([key, {label,detail}]) => {
+    $('#grp-tela .fab').appendChild(btn({ 'data-v': key }, `<span>${label}</span><small>${detail}</small>`));
   });
 
   $('#grp-colores').innerHTML = `<h4>Color por zona</h4>
    <div class="zpills" role="group" aria-label="Zona a colorear"></div>
    <div class="palette-head"><span id="colorName"></span><button type="button" class="studio-link" id="editColor" aria-controls="slotZone" aria-expanded="false">Color personalizado</button></div>
    <div class="studio-palette" id="palette" role="group" aria-label="Colores rápidos"></div><div id="slotZone"></div>`;
+  $('#grp-colores').insertAdjacentHTML('beforeend','<p class="material-technique" id="colourAvailability" hidden>Tonos orientativos. Consultá colores y disponibilidad para tu pedido.</p>');
   ZONES.forEach(key => $('#grp-colores .zpills').appendChild(btn({ class: 'zp', 'data-z': key }, '<i></i><span></span>')));
   PALETTE.forEach(([hex, name]) => $('#palette').appendChild(btn({'data-hex': hex, 'aria-label': name, title: name}, `<i style="background:${hex}"></i>`)));
   $('#grp-estampa').innerHTML = `<h4>Estampado</h4><div class="prints" role="group" aria-label="Estampado"></div>
@@ -124,7 +116,7 @@ function buildPanel() {
     $('#grp-estampa .prints').appendChild(btn({ 'data-v': key }, `<i class="${patternClasses[key]}"></i><span>${PRESETS_P[key]}</span>`));
   });
 
-  $('#grp-texto').innerHTML = `<h4>Texto <button class="studio-link" id="clearText" type="button">Borrar textos</button></h4><div class="fields">
+  $('#grp-texto').innerHTML = `<h4>Texto <button class="studio-link" id="clearText" type="button">Borrar textos</button></h4><p class="material-technique" id="detailNote" hidden>Consultanos qué personalización es compatible con esta tela.</p><div class="fields">
    <div class="field"><label for="fNombre">Nombre o apodo</label><input id="fNombre" maxlength="14" autocomplete="off" data-k="nombre" placeholder="Ej. Meli"></div>
    <div class="field"><label for="fNum">Número</label><input id="fNum" maxlength="3" inputmode="numeric" data-k="numero" placeholder="26"></div>
    <div class="field full"><label id="labelPrintText" for="fEsp">Texto de espalda</label><input id="fEsp" maxlength="18" data-k="espalda" placeholder="Ej. Promo 26"></div>
@@ -161,26 +153,31 @@ function selectStep(index, focus = false) {
   groups.scrollTop = 0;
   if (focus) $('#tab-' + step.id).focus({preventScroll: true});
 }
-function sizeList() { return P[state.producto].sizes || SIZES; }
+function sizeList() { return P[state.producto].sizes; }
 function sync() {
-  const pr = P[state.producto];
-  if (!pr.telas.includes(state.tela) && pr.telas.length) state.tela = pr.telas[0];
+  const { product:pr, segment, materialId, material, technique, zones, patterns, fields, materials } = optionsFor(state);
+  state.segmento = segment;
+  if (materialId) state.tela = materialId;
+  const display = compatiblePrint(state);
+  if (technique === LOCAL_DTF) state.colors.cuerpo = display.colors.cuerpo;
   if (!sizeList().includes(state.talle)) state.talle = sizeList()[Math.min(8, sizeList().length - 1)] || sizeList()[0];
   const accessory = state.producto === 'bandera' || state.producto === 'gorra';
   $$('#grp-producto .chip').forEach(button => button.setAttribute('aria-pressed', button.dataset.v === state.producto));
   $$('#grp-tela .fab button').forEach(button => {
-    button.hidden = !pr.telas.includes(button.dataset.v);
+    button.hidden = !materials.includes(button.dataset.v);
     button.setAttribute('aria-pressed', button.dataset.v === state.tela);
   });
-  $('#grp-tela .fab').classList.toggle('single', pr.telas.length === 1);
+  $('#grp-tela .fab').classList.toggle('single', materials.length === 1);
   $('#fixedFabric').textContent = pr.fixed || '';
   $('#fixedFabric').hidden = !pr.fixed;
+  const method = TECHNIQUES[technique];
+  $('#materialTechnique').textContent = `${method.label} · ${method.description}`;
 
-  if (!pr.zones[zone]) zone = Object.keys(pr.zones).find(key => pr.zones[key]);
+  if (!zones[zone]) zone = Object.keys(zones)[0];
   const customZone = active?.kind === 'zone';
   $$('#grp-colores .zp').forEach(button => {
     const key = button.dataset.z;
-    const label = pr.zones[key];
+    const label = zones[key];
     button.hidden = !label;
     button.querySelector('span').textContent = label || '';
     button.querySelector('i').style.background = state.colors[key];
@@ -188,10 +185,16 @@ function sync() {
   });
   const color = state.colors[zone];
   $('#colorName').textContent = cname(color) === color ? color.toUpperCase() : cname(color);
-  $$('#palette button').forEach(button => button.setAttribute('aria-pressed', button.dataset.hex === color));
+  $$('#palette button').forEach(button => {
+    button.hidden = Boolean(material?.previewColors && !material.previewColors.includes(button.dataset.hex));
+    button.setAttribute('aria-pressed', button.dataset.hex === color);
+  });
+  $('#editColor').hidden = Boolean(material?.previewColors);
+  $('#colourAvailability').hidden = technique !== LOCAL_DTF && state.producto !== 'gorra';
   $('#editColor').setAttribute('aria-expanded', customZone);
 
-  const plain = state.preset === 'liso';
+  const plain = display.preset === 'liso';
+  $('#grp-estampa').hidden = !patterns;
   $('#pcols').hidden = plain;
   if (plain && active?.kind === 'print') closeWheel();
   $$('#pcols .pc').forEach((button, i) => {
@@ -207,11 +210,13 @@ function sync() {
     swatch.setProperty('--a3', state.colors.acento3);
   });
   $('#printAll').checked = state.printAll;
-  $('#printAll').closest('.toggle').hidden = plain || accessory || !pr.zones.mangas;
-  $('#printAllText').textContent = pr.zones.capucha ? 'Aplicar también en mangas y capucha' : 'Aplicar también en mangas';
+  $('#printAll').closest('.toggle').hidden = plain || accessory || !zones.mangas;
+  $('#printAllText').textContent = zones.capucha ? 'Aplicar también en mangas y capucha' : 'Aplicar también en mangas';
 
-  for (const id of ['fNombre', 'fNum', 'fFrase']) $('#' + id).closest('.field').hidden = accessory;
-  $('#fEsc').closest('.field').hidden = state.producto === 'gorra';
+  $$('#grp-texto input[data-k]').forEach(input => { input.closest('.field').hidden = !fields.includes(input.dataset.k); });
+  $('#detailNote').hidden = technique !== CONSULT;
+  $('#grp-logo').hidden = !fields.includes('logo');
+  $('#clearText').hidden = technique === CONSULT;
   $('#labelPrintText').textContent = accessory ? 'Texto principal' : 'Texto de espalda';
   $('#logoHint').textContent = accessory ? 'PNG, JPG, SVG o WebP · frente' : 'PNG, JPG, SVG o WebP · en el pecho';
   $$('#groups input[data-k]').forEach(input => {
@@ -222,7 +227,7 @@ function sync() {
   const sizeLabel = state.producto === 'bandera' ? 'Medidas' : 'Talle';
   $('#sizeTitle').textContent = sizeLabel;
   sizes.setAttribute('aria-label', sizeLabel);
-  $('#sizeGuide').hidden = accessory;
+  $('#sizeGuide').hidden = accessory || state.producto === 'short';
   if (sizes.dataset.p !== state.producto) {
     sizes.replaceChildren(...list.map(size => btn({ 'data-v': size }, size)));
     sizes.dataset.p = state.producto;
@@ -230,17 +235,17 @@ function sync() {
   }
   $$('.sizes button').forEach(button => button.setAttribute('aria-pressed', button.dataset.v === state.talle));
 
-  const fabric = pr.telas.length ? TELAS[state.tela][0] : pr.fixed;
+  const fabric = material?.label || pr.fixed;
   $('#crumbT').textContent = pr.crumb;
   const fit = (accessory ? '' : 'Talle ') + state.talle;
   $('#crumbS').textContent = `${fabric} · ${fit}`;
-  $('#sumL').textContent = `${pr.label} · ${fabric} · ${PRESETS_P[state.preset]}`;
+  $('#sumL').textContent = `${pr.label} · ${fabric} · ${patterns ? PRESETS_P[display.preset] : TECHNIQUES[technique].label}`;
   $('#sumR').textContent = [fit, state.cantidad && `${state.cantidad} unidades`].filter(Boolean).join(' · ');
   $('#waBtn').href = waLink();
   const fallback = $('#fb');
   if (fallback) {
     const preview = fallback.querySelector('img');
-    preview.src = FALLBACK_IMG[state.producto];
+    preview.src = P[state.producto].image;
     preview.alt = `Ejemplo de diseño de ${pr.label.toLowerCase()}`;
   }
   saveHash();
@@ -261,17 +266,21 @@ function saveHash() {
   }, 400);
 }
 function waLink() {
-  const pr = P[state.producto], z = pr.zones;
+  const {product:pr,segment, zones:z, material, technique, fields, patterns} = optionsFor(state);
+  const design = compatiblePrint(state);
   const hx = h => { const n = cname(h); return h.toUpperCase() + (n !== h ? ` (${n})` : ''); };
-  const cols = Object.entries(z).filter(([, l]) => l).map(([k, l]) => `${l}: ${hx(state.colors[k])}`);
+  const cols = Object.entries(z).map(([k, l]) => `${l}: ${hx(design.colors[k])}`);
   const L = [
     '¡Hola Impronta! Quiero pedir presupuesto por este diseño:', '',
-    `• Producto: ${pr.crumb}`, `• Tela: ${pr.telas.length ? TELAS[state.tela][0] : pr.fixed}`, `• Colores por zona: ${cols.join(' · ')}`,
-    `• Estampado: ${PRESETS_P[state.preset]}${state.printAll && state.preset !== 'liso' && z.mangas && !pr.fixed ? (z.capucha ? ' (incluye mangas y capucha)' : ' (incluye mangas)') : ''}`,
-    state.preset !== 'liso' && `• Colores del estampado: ${PCOL.map((k, i) => `${i + 1}) ${hx(state.colors[k])}`).join(' · ')}`,
-    !pr.fixed && state.nombre && `• Nombre: ${state.nombre}`, !pr.fixed && state.numero && `• Número: ${state.numero}`,
-    state.espalda && `• ${pr.fixed ? 'Texto principal' : 'Texto espalda'}: ${state.espalda}`, state.producto !== 'gorra' && state.escuela && `• Escuela / curso: ${state.escuela}`, !pr.fixed && state.frase && `• Frase: ${state.frase}`,
-    state.logoImg && '• Logo: lo adjunto en este chat', `• Talle: ${state.talle}`, state.cantidad && `• Cantidad aprox.: ${state.cantidad}`, '',
+    `• Producto: ${pr.crumb}`, `• Categoría: ${segments[segment]}`, `• Tela: ${material?.label || pr.fixed}`,
+    `• Técnica: ${TECHNIQUES[technique].label}`, `• Colores por zona: ${cols.join(' · ')}`,
+    patterns && `• Estampado: ${PRESETS_P[design.preset]}${design.printAll && design.preset !== 'liso' && z.mangas && !pr.fixed ? (z.capucha ? ' (incluye mangas y capucha)' : ' (incluye mangas)') : ''}`,
+    design.preset !== 'liso' && `• Colores del estampado: ${PCOL.map((k, i) => `${i + 1}) ${hx(design.colors[k])}`).join(' · ')}`,
+    fields.includes('nombre') && design.nombre && `• Nombre: ${design.nombre}`, fields.includes('numero') && design.numero && `• Número: ${design.numero}`,
+    fields.includes('espalda') && design.espalda && `• ${pr.fixed ? 'Texto principal' : 'Texto espalda'}: ${design.espalda}`,
+    fields.includes('escuela') && design.escuela && `• Escuela / curso: ${design.escuela}`, fields.includes('frase') && design.frase && `• Frase: ${design.frase}`,
+    fields.includes('logo') && state.logoImg && '• Logo: lo adjunto en este chat',
+    technique === LOCAL_DTF && '• Confirmame los colores de remera disponibles.', `• Talle: ${state.talle}`, state.cantidad && `• Cantidad aprox.: ${state.cantidad}`, '',
     `Ver el diseño en 3D: ${location.protocol === 'file:' || /^localhost$|^127\.0\.0\.1$/.test(location.hostname) ? CANONICAL_ORIGIN : location.href.split('#')[0]}${designHash()}`,
     '', 'Detalles extra: ',
   ].filter(Boolean);
@@ -280,21 +289,21 @@ function waLink() {
 function wire() {
   groups.addEventListener('click', e => {
     const button = e.target.closest('button');
-    if (!button || button.disabled || button.closest('.cw')) return;
+    if (!button || button.disabled || button.hidden || button.closest('.cw')) return;
     const { v, z, i, hex } = button.dataset;
     if (button.matches('.chip')) setProduct(v);
-    if (button.closest('.fab')) { state.tela = v; sync(); api?.repaint(); }
+    if (button.closest('.fab') && optionsFor(state).materials.includes(v)) { closeWheel(); state.tela = v; sync(); api?.repaint(); }
     if (z) selectZone(z);
     if (hex) { state.colors[zone] = hex; wheel.set(hex); sync(); liveRepaint(true); }
     if (button.id === 'editColor') {
       if (active?.kind === 'zone') closeWheel();
-      else openWheel({ kind: 'zone', key: zone }, $('#slotZone'), P[state.producto].zones[zone]);
+      else openWheel({ kind: 'zone', key: zone }, $('#slotZone'), optionsFor(state).zones[zone]);
     }
     if (button.matches('.pc')) {
       if (active?.kind === 'print' && active.i === Number(i)) closeWheel();
       else openWheel({ kind: 'print', key: PCOL[i], i: Number(i) }, $('#slotPrint'), `Color ${Number(i) + 1} del estampado`);
     }
-    if (button.closest('.prints')) { state.preset = v; sync(); api?.repaint(); }
+    if (button.closest('.prints') && optionsFor(state).patterns) { state.preset = v; sync(); api?.repaint(); }
     if (button.closest('.sizes')) { state.talle = v; sync(); if (state.producto === 'bandera' || state.producto === 'gorra') api?.rebuild(false); }
     if (button.id === 'clearText') {
       $$('#grp-texto .field:not([hidden]) input').forEach(input => { state[input.dataset.k] = ''; });
@@ -317,7 +326,7 @@ function wire() {
     input.addEventListener('focus', () => {
       if (input.id === 'fCant') return;
       const accessory = Boolean(P[state.producto].fixed);
-      const front = accessory || input.id === 'fNombre' || (input.id === 'fEsc' && state.producto !== 'campera');
+      const front = accessory || state.producto === 'short' || input.id === 'fNombre' || (input.id === 'fEsc' && state.producto !== 'campera');
       if (api) showAngle(front ? 0 : Math.PI);
     });
   });
@@ -427,13 +436,14 @@ function closeWheel() {
   $$('.pc').forEach(button => button.setAttribute('aria-expanded', 'false'));
 }
 function selectZone(key, from3D = false) {
-  if (!P[state.producto].zones[key]) return;
+  const label = optionsFor(state).zones[key];
+  if (!label) return;
   if (from3D && STEPS[currentStep].id !== 'color') selectStep(1);
   if (active?.kind === 'print') closeWheel();
   zone = key;
   if (active?.kind === 'zone') {
     active.key = key;
-    wheel.open($('#slotZone'), P[state.producto].zones[key], state.colors[key]);
+    wheel.open($('#slotZone'), label, state.colors[key]);
   }
   sync();
   api?.highlight(key, true);
@@ -455,7 +465,11 @@ function setProduct(product, segment, size) {
   closeWheel();
   if (state.frase === P[state.producto].frase) state.frase = P[product].frase;
   state.producto = product;
+  if (segment === 'empresas' && state.segmento !== segment) {
+    Object.assign(state, {preset:'liso', printAll:false, nombre:'', numero:'', espalda:'', escuela:'', frase:''});
+  }
   if (segment && segments[segment]) state.segmento = segment;
+  if (segment === 'empresas' && product === 'remera') state.tela = 'algodon';
   if (size && sizeList().includes(size)) state.talle = size;
   sync();
   api?.rebuild(true);
@@ -464,7 +478,6 @@ function setProduct(product, segment, size) {
 /* ---------- lazy 3D ---------- */
 // The 3D studio ships as a classic script (js/studio.js) so the site also works when opened from file://.
 let api = null, loading = null, failed = false;
-const FALLBACK_IMG = { remera: 'img/studio-shoulder-poster.webp', campera: 'img/catalog-egresados.webp', conjunto: 'img/catalog-deportivos.webp', musculosa: 'img/preset-zumba.webp', short: 'img/trabajos/deportivo-estrella-680.webp', bandera: 'img/catalog-banderas.webp', gorra: 'img/catalog-gorras.webp' };
 function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.async = true; s.onload = res; s.onerror = () => rej(new Error('No se pudo cargar ' + src)); document.head.appendChild(s); }); }
 function webglOK() { try { const c = document.createElement('canvas'); const gl = window.WebGLRenderingContext && (c.getContext('webgl2') || c.getContext('webgl')); if (!gl) return false; const x = gl.getExtension('WEBGL_lose_context'); x && x.loseContext(); return true; } catch (e) { return false; } }
 function showFallback(reason) {
@@ -473,7 +486,7 @@ function showFallback(reason) {
   const v = $('#viewer'); v.classList.add('fallback'); v.setAttribute('aria-busy', 'false');
   const l = $('#loader'); if (l) l.remove();
   const f = document.createElement('div'); f.className = 'fb'; f.id = 'fb';
-  f.innerHTML = `<img src="${FALLBACK_IMG[state.producto] || 'img/poster.webp'}" alt=""><div class="fbx"><b>El estudio 3D no pudo abrirse en este dispositivo</b><p>No pasa nada: elegí tus opciones en el panel y mandanos el pedido por WhatsApp. Te armamos la propuesta en 3D nosotros.</p><button class="btn btn-red" type="button">Ir al pedido</button></div>`;
+  f.innerHTML = `<img src="${P[state.producto].image || 'img/poster.webp'}" alt=""><div class="fbx"><b>El estudio 3D no pudo abrirse en este dispositivo</b><p>No pasa nada: elegí tus opciones en el panel y mandanos el pedido por WhatsApp. Te armamos la propuesta en 3D nosotros.</p><button class="btn btn-red" type="button">Ir al pedido</button></div>`;
   v.appendChild(f);
   f.querySelector('button').onclick = () => selectStep(3, true);
   sync();
@@ -511,7 +524,7 @@ function load3D() {
     window.__impronta = { api, state, applyPreset, sync, loadMs: Math.round(performance.now() - t0) };
     applyFit();
     api.onZonePick(z => selectZone(z, true));
-    api.setZones(() => Object.keys(P[state.producto].zones).filter(z => P[state.producto].zones[z]));
+    api.setZones(() => Object.keys(optionsFor(state).zones));
     api.onView(view => {
       $('#autoBtn').setAttribute('aria-pressed', view.auto);
       const angles = segment.querySelectorAll('button');

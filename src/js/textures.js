@@ -272,7 +272,7 @@ export function torsoCanvas(cv, st, { vOf, product }) {
     g.fillText(sub, 287 * sx, nameY + 34 * sx);
     const logoY = Y(sleeveless ? .074 : .1);
     if (st.logoImg) drawLogo(g, st.logoImg, 680 * sx, logoY, 110 * sx);
-    else imMark(g, 680 * sx, logoY, 42 * sx);
+    else if (!st.hideAutoMark) imMark(g, 680 * sx, logoY, 42 * sx);
   } else {
     g.textAlign = 'center'; g.fillStyle = t;
     fitText(g, nm, s => `${s}px Anton`, 150 * sx, 54 * sx); g.fillText(nm, 338 * sx, Y(0.08));
@@ -301,7 +301,7 @@ export function torsoCanvas(cv, st, { vOf, product }) {
     g.fillText(st.escuela.toUpperCase(), 1536 * sx, Y(-.227));
   }
   // brand tag below back collar
-  if (!jacket) imMark(g, 1536 * sx, Y(0.195), 13 * sx);
+  if (!jacket && !st.hideAutoMark) imMark(g, 1536 * sx, Y(0.195), 13 * sx);
 }
 
 export function plainCanvas(cv, st, zone, { pattern = false, seed = 5 } = {}) {

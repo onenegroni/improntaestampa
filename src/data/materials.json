@@ -1,0 +1,47 @@
+{
+  "deportiva": {
+    "label": "Dry Set",
+    "detail": "Tacto y aspecto deportivo. Para remeras sublimadas.",
+    "technique": "sublimacion",
+    "swatch": "deportiva",
+    "status": "disponible"
+  },
+  "modal": {
+    "label": "Modal",
+    "detail": "Opción de tacto más suave. Consultá la técnica de impresión.",
+    "technique": "consulta",
+    "swatch": "modal",
+    "status": "disponible"
+  },
+  "frizado": {
+    "label": "Acrílico frizado",
+    "detail": "Interior suave. Para camperas con capucha sublimadas.",
+    "technique": "sublimacion",
+    "swatch": "frizado",
+    "status": "disponible"
+  },
+  "algodon": {
+    "label": "Algodón",
+    "detail": "Remera promocional con gráfica localizada en DTF.",
+    "technique": "dtf",
+    "swatch": "modal",
+    "status": "disponible",
+    "segments": [
+      "empresas"
+    ],
+    "previewColors": [
+      "#141414",
+      "#f2efe9"
+    ]
+  },
+  "frisa": {
+    "label": "Frisa de algodón",
+    "status": "en-evaluacion",
+    "swatch": "frizado",
+    "proposedTechniques": [
+      "bordado",
+      "parches",
+      "grafica-localizada"
+    ]
+  }
+}

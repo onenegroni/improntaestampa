@@ -1,6 +1,7 @@
 // Build: src/ -> site/ (classic scripts, inlined fonts) so the site works over http AND file://
 const fs = require('fs'), path = require('path'), esbuild = require('esbuild');
 const catalogue = require('./src/data/catalogue.json');
+const materials = require('./src/data/materials.json');
 const S = path.join(__dirname, 'src'), O = path.join(__dirname, 'site');
 const common = { bundle: true, format: 'iife', minify: true, target: ['es2018', 'safari12', 'ios12', 'chrome70', 'firefox68'], legalComments: 'inline', logLevel: 'warning' };
 const escapeHtml = value => String(value).replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[character]);
@@ -24,6 +25,10 @@ function renderCatalogue() {
 function renderOwnerPhotos() {
   return catalogue.photos.map(([id,category,title,alt,width,height]) => `<figure class="card rv" data-cat="${category}" data-owner-photo="${id}"><button class="ph2" data-lb="${photoPath(id)}" aria-label="Ampliar foto de ${escapeHtml(title)}"><img src="${photoPath(id,true)}" width="${width}" height="${height}" loading="lazy" decoding="async" alt="${escapeHtml(alt)}"></button><figcaption class="cap"><b>${escapeHtml(title)}</b><span>${escapeHtml(catalogue.segments[category])}</span></figcaption></figure>`).join('\n');
 }
+function renderMaterials() {
+  return Object.values(materials).filter(({status})=>status === 'disponible')
+    .map(({label,detail})=>`<div><h5>${escapeHtml(label)}</h5><p>${escapeHtml(detail)}</p></div>`).join('');
+}
 (async () => {
   for (const f of ['main.js','configurator.js','garments.js','textures.js']) fs.rmSync(path.join(O,'js',f),{force:true});
   fs.rmSync(path.join(O,'js','vendor'),{recursive:true,force:true});
@@ -42,7 +47,7 @@ function renderOwnerPhotos() {
   const fr = (await esbuild.transform(facesHttp, { loader: 'css', minify: true, target: CT })).code.trim();
   fs.writeFileSync(path.join(O, 'css/styles.css'), fr.replace(/url\(fonts\//g, 'url(../fonts/') + r.code);
   fs.writeFileSync(path.join(O, 'css/fonts-inline.css'), (await esbuild.transform(facesInline, { loader: 'css', minify: true })).code);
-  const html = fs.readFileSync(path.join(S, 'index.html'), 'utf8').replace('FACES', () => JSON.stringify(fr).replace(/</g, '\\u003c')).replace('<!--CSS-->', () => `<style>${r.code.replace(/<\/style/gi, '<\\/style')}</style>`).replace('<!--CATALOGUE-->',renderCatalogue).replace('<!--OWNER-PHOTOS-->',renderOwnerPhotos);
+  const html = fs.readFileSync(path.join(S, 'index.html'), 'utf8').replace('FACES', () => JSON.stringify(fr).replace(/</g, '\\u003c')).replace('<!--CSS-->', () => `<style>${r.code.replace(/<\/style/gi, '<\\/style')}</style>`).replace('<!--CATALOGUE-->',renderCatalogue).replace('<!--OWNER-PHOTOS-->',renderOwnerPhotos).replace('<!--MATERIALS-->',renderMaterials);
   fs.writeFileSync(path.join(O, 'index.html'), html);
   for (const f of ['index.html','js/app.js','js/studio.js','css/styles.css','css/fonts-inline.css']) console.log(f, (fs.statSync(path.join(O,f)).size/1024).toFixed(0)+' KB');
 })().catch(e => { console.error(e); process.exit(1); });

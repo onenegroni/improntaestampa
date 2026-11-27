@@ -4,6 +4,7 @@ import { RoomEnvironment } from './vendor/RoomEnvironment.js';
 import * as G from './garments.js';
 import * as T from './textures.js';
 import { fittedParts } from './models/fitted-garments.js';
+import { PRODUCTS, compatiblePrint, optionsFor } from './product-data.js';
 // CC0 textile scans by colormass and Rico Cilliers, published by Poly Haven.
 import jerseyNormal from './fabric-scans/jersey-normal.webp';
 import jerseySurface from './fabric-scans/jersey-surface.webp';
@@ -160,7 +161,8 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   let capNet = null;
   const twill = T.knitNormal(160, 'twill'); twill.repeat.set(21, 11);
   const rib = T.knitNormal(128, 'rib'); rib.repeat.set(13, 2);
-  const NEEDS = { remera: ['torso', 'sleeve'], campera: ['torso', 'sleeve', 'hood'], conjunto: ['torso', 'sleeve', 'short', 'shortPlain'], musculosa: ['torso'], short: ['short', 'shortPlain'], bandera: ['flag'], gorra: ['cap', 'visor'] };
+  const needsPrint = () => PRODUCTS[state.producto].atlas;
+  const currentFabric = () => fabrics[optionsFor(state).material?.swatch] || fabrics.deportiva;
   const texes = {};
   const surfaces = {};
   const maxTextureSize = renderer.capabilities.maxTextureSize;
@@ -189,7 +191,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     surface.texture.dispose();
     surface.canvas.width = surface.canvas.height = 0;
   }
-  function primaryPrint() { return NEEDS[state.producto][0]; }
+  function primaryPrint() { return needsPrint()[0]; }
   function closeupPrint(zoom) { return canUseCloseupAtlas && zoom >= 1.65; }
   function surfaceFor(name) {
     const size = name === primaryPrint() && closeupPrint(view.zoom) ? 4096 : basePrintSize;
@@ -210,7 +212,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   const temporaryMaterials = new Set();
   function own(material) { temporaryMaterials.add(material); return material; }
   function fabricMat(map, { ribbed = false, side = THREE.DoubleSide } = {}) {
-    const f = fabrics[state.tela] || fabrics.deportiva;
+    const f = currentFabric();
     const grain = f.panels ? f.scale : .34;
     return own(new THREE.MeshPhysicalMaterial({
       map, side, roughness: f.roughness, roughnessMap: f.roughMap,
@@ -350,6 +352,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     flag = null;
     hangs.length = 0;
     const P = state.producto;
+    const model = PRODUCTS[P].model;
     const fitted = P !== 'bandera' && P !== 'gorra';
     const fleece = P === 'campera';
     key.intensity = fleece ? 2.68 : fitted ? 2.86 : 2.62;
@@ -360,7 +363,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     // Only the current product keeps a resident atlas. In particular, a
     // sports kit's two numbered/plain shorts atlases leave memory on switch.
     for (const name of Object.keys(surfaces)) {
-      if (NEEDS[P].includes(name)) continue;
+      if (needsPrint().includes(name)) continue;
       disposeSurface(surfaces[name]);
       delete surfaces[name];
       delete texes[name];
@@ -368,17 +371,11 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     product.rotation.set(0, 0, 0);
     product.position.set(0, 0, 0);
     paintTextures();
-    if (P === 'remera') {
-      product.add(buildFittedGarment('tee'));
-    } else if (P === 'musculosa') {
-      product.add(buildFittedGarment('tank'));
-    } else if (P === 'campera') {
-      product.add(buildFittedGarment('hoodie'));
-    } else if (P === 'conjunto') {
+    if (model === 'kit') {
       // The jersey tucks into the shorts with the elastic band in front.
-      product.add(buildFittedGarment('kit', .14), buildFittedGarment('shorts', .14));
-    } else if (P === 'short') {
-      product.add(buildFittedGarment('shorts'));
+      product.add(buildFittedGarment(model, .14), buildFittedGarment('shorts', .14));
+    } else if (fitted) {
+      product.add(buildFittedGarment(model));
     } else if (P === 'bandera') {
       const [width, height] = state.talle.split('×').map(parseFloat);
       const clothHeight = Math.min(.8, 1.2 * (height / width || .64));
@@ -484,7 +481,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     }
   }
   function drawInto(get, names) {
-    const st = state, product = st.producto;
+    const st = compatiblePrint(state), product = st.producto;
     if (names.includes('torso')) T.torsoCanvas(get('torso'), st, { vOf, product });
     if (names.includes('sleeve')) T.plainCanvas(get('sleeve'), st, 'mangas', { pattern: st.printAll, seed: 9 });
     if (names.includes('hood')) T.hoodCanvas(get('hood'), st);
@@ -493,13 +490,12 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     if (names.includes('cap')) T.capCanvas(get('cap'), st);
     if (names.includes('visor')) T.plainCanvas(get('visor'), st, 'mangas');
   }
-  function printSignature(name) {
-    const st = state;
+  function printSignature(name, st) {
     const accents = [st.preset, ...T.pcols(st)];
     const sidePrint = st.printAll ? accents : [];
     const text = [st.nombre, st.numero, st.espalda, st.escuela, st.frase];
     switch (name) {
-      case 'torso': return [st.producto, st.colors.cuerpo, ...accents, ...text];
+      case 'torso': return [st.producto, st.hideAutoMark, st.colors.cuerpo, ...accents, ...text];
       case 'sleeve': return [st.colors.mangas, ...sidePrint];
       case 'hood': return [st.colors.capucha, ...sidePrint];
       case 'short':
@@ -509,11 +505,11 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       default: return [st.colors.mangas];
     }
   }
-  function printLogo(name) {
-    return ['torso', 'flag', 'cap'].includes(name) ? state.logoImg : null;
+  function printLogo(name, st) {
+    return ['torso', 'flag', 'cap'].includes(name) ? st.logoImg : null;
   }
   function matTargets() {
-    const st = state, f = fabrics[st.tela] || fabrics.deportiva;
+    const st = compatiblePrint(state), f = currentFabric();
     const list = [];
     if (parts.punos) list.push([parts.punos.color, new THREE.Color(st.colors.punos)]);
     if (parts.capMesh) list.push([parts.capMesh.color, new THREE.Color(st.colors.malla)]);
@@ -559,9 +555,10 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   }
   let paintTimer = 0;
   function paintTextures() {
-    const changed = NEEDS[state.producto].filter(name => {
+    const design = compatiblePrint(state);
+    const changed = needsPrint().filter(name => {
       const surface = surfaceFor(name);
-      const key = JSON.stringify(printSignature(name)), logo = printLogo(name);
+      const key = JSON.stringify(printSignature(name, design)), logo = printLogo(name, design);
       if (surface.key === key && surface.logo === logo) return false;
       surface.key = key;
       surface.logo = logo;
