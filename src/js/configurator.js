@@ -55,7 +55,7 @@ THREE.ShaderChunk.tonemapping_pars_fragment = THREE.ShaderChunk.tonemapping_pars
     color *= toneMappingExposure;
     float peak = max(max(color.r, color.g), color.b);
     color *= mix(0.56, 1.0, smoothstep(0.0, 0.075, peak));
-    const float knee = 0.68;
+    const float knee = 0.76;
     if (peak <= knee) return color;
     float highlight = 1.0 - knee;
     float range = peak - knee;
@@ -211,16 +211,27 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
 
   const temporaryMaterials = new Set();
   function own(material) { temporaryMaterials.add(material); return material; }
+  function dyeTextileSheen(shader) {
+    // The visible fibers carry the dye or print. Keep a small neutral
+    // reflection without laying the same grey sheen over every ink color.
+    shader.fragmentShader = shader.fragmentShader.replace('#include <lights_physical_fragment>',
+      `#include <lights_physical_fragment>
+       #ifdef USE_SHEEN
+         material.sheenColor *= mix(vec3(0.16), diffuseColor.rgb, 0.84);
+       #endif`);
+  }
   function fabricMat(map, { ribbed = false, side = THREE.DoubleSide } = {}) {
     const f = currentFabric();
     const grain = f.panels ? f.scale : .34;
-    return own(new THREE.MeshPhysicalMaterial({
+    const material = own(new THREE.MeshPhysicalMaterial({
       map, side, roughness: f.roughness, roughnessMap: f.roughMap,
       envMapIntensity: .32, vertexColors: true, normalMap: ribbed ? rib : f.normal,
       normalScale: new THREE.Vector2(grain, grain),
       sheen: f.sheen, sheenRoughness: f.sheenRoughness,
       sheenColor: new THREE.Color(0xc0c0c0), specularIntensity: f.spec,
     }));
+    material.onBeforeCompile = dyeTextileSheen;
+    return material;
   }
   function colorMat(hex, opts) { const m = fabricMat(null, { ribbed: true, ...opts }); m.color.set(hex); return m; }
   function mesh(geometry, material) {
@@ -262,6 +273,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     const relief = { value: 0 };
     material.userData.clothGrain = { cloth, relief };
     material.onBeforeCompile = shader => {
+      dyeTextileSheen(shader);
       shader.uniforms.improntaCloth = cloth;
       shader.uniforms.improntaRelief = relief;
       shader.uniforms.improntaTile = { value: new THREE.Vector2(...panelRepeats[panelFor(name, state.producto)]) };
@@ -356,7 +368,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     const model = PRODUCTS[P].model;
     const fitted = P !== 'bandera' && P !== 'gorra';
     const fleece = P === 'campera';
-    key.intensity = fleece ? 2.68 : fitted ? 2.86 : 2.62;
+    key.intensity = fleece ? 2.85 : fitted ? 2.7 : 2.62;
     key.shadow.bias = fitted ? -.00009 : -.00021;
     key.shadow.normalBias = fitted ? .0015 : .0044;
     fill.intensity = fleece ? .61 : fitted ? .48 : .56;
@@ -552,7 +564,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       material.roughness = accessory ? .94 : f.roughness;
       material.roughnessMap = swatch.surface;
       material.sheen = accessory ? 0 : f.sheen;
-      material.specularIntensity = accessory ? .22 : f.spec;
+      material.specularIntensity = accessory ? .13 : f.spec;
       material.sheenRoughness = f.sheenRoughness;
       if (!ribbed) material.normalMap = swatch.normal;
       const grain = ribbed ? .43 : name === 'flag' ? .20 : accessory ? .30 : f.panels ? f.scale : .34;

@@ -29,7 +29,7 @@ const cleanPersonalization = { nombre:'', numero:'', espalda:'', escuela:'', fra
 const openedDesign = location.hash.startsWith('#d=');
 if (!openedDesign) {
   Object.assign(state, cleanPersonalization, { preset:'liso', tipografia:'moderna', cantidad:'' });
-  Object.assign(state.colors, { cuerpo:'#243855', mangas:'#243855', punos:'#233249', capucha:'#243855' });
+  Object.assign(state.colors, { cuerpo:'#174789', mangas:'#174789', punos:'#133368', capucha:'#174789' });
 }
 if (openedDesign) {
   try {

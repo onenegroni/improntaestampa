@@ -133,7 +133,7 @@ section[id],.viewer,.cfg{scroll-margin-top:64px}
   --studio-line: #e6e0d9;
   --studio-paper: #fbfaf8;
   --studio-red: #861f30;
-  --studio-stage: radial-gradient(ellipse at 47% 37%, #fffdf9 0%, #f0ebe5 61%, #ddd5cf 100%);
+  --studio-stage: radial-gradient(ellipse at 47% 37%, #fffefe 0%, #f0eeec 61%, #dfdad7 100%);
   padding: clamp(54px, 7vw, 105px) 0 clamp(60px, 8vw, 124px);
   background: #f3efea;
   color: var(--studio-ink);
