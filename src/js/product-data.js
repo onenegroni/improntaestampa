@@ -46,19 +46,23 @@ export function optionsFor(state) {
   const material = MATERIALS[materialId];
   const technique = material?.technique || product.technique;
   const zones = technique === LOCAL_DTF ? { cuerpo:'Prenda' } : product.zones;
-  const fields = technique === LOCAL_DTF ? dtfFields : technique === CONSULT ? [] : product.fields;
   const regions = technique === LOCAL_DTF ? [...front,...back] : technique === CONSULT ? [] : product.regions;
+  const fields = technique === LOCAL_DTF ? dtfFields : technique === CONSULT ? [] :
+    regions.includes('manga-izq') ? [...product.fields,'mangaIzq','mangaDer'] : product.fields;
   return { product, segment, materials, materialId, material, technique, zones, fields, regions,
     patterns: technique === ALL_OVER || technique === 'frente' };
 }
 
 export function compatiblePrint(state) {
   const options = optionsFor(state);
-  if (options.patterns) return state;
+  const placementFields = ['nombreLugar','numeroLugar','espaldaLugar','logoLugar','arteLugar'];
+  const invalid = placementFields.filter(key=>state[key] && !options.regions.includes(state[key]));
+  const design = invalid.length ? { ...state, ...Object.fromEntries(invalid.map(key=>[key,''])) } : state;
+  if (options.patterns) return design;
   const { technique, material } = options;
   // Legacy designs remain recoverable when returning to the original material.
-  const plain = { ...state, preset:'liso', printAll:false, hideAutoMark:true, escuela:'', frase:'' };
-  if (technique === CONSULT) return { ...plain, nombre:'', numero:'', espalda:'', logoImg:null };
+  const plain = { ...design, preset:'liso', printAll:false, hideAutoMark:true, escuela:'', frase:'', mangaDer:'', mangaIzq:'' };
+  if (technique === CONSULT) return { ...plain, nombre:'', numero:'', espalda:'', logoImg:null, arte:'' };
   const base = material.previewColors.includes(state.colors.cuerpo) ? state.colors.cuerpo : material.previewColors[0];
   return { ...plain, colors:{ ...state.colors, cuerpo:base, mangas:base, punos:base } };
 }

@@ -47,7 +47,10 @@ function renderMaterials() {
   const fr = (await esbuild.transform(facesHttp, { loader: 'css', minify: true, target: CT })).code.trim();
   fs.writeFileSync(path.join(O, 'css/styles.css'), fr.replace(/url\(fonts\//g, 'url(../fonts/') + r.code);
   fs.writeFileSync(path.join(O, 'css/fonts-inline.css'), (await esbuild.transform(facesInline, { loader: 'css', minify: true })).code);
-  const html = fs.readFileSync(path.join(S, 'index.html'), 'utf8').replace('FACES', () => JSON.stringify(fr).replace(/</g, '\\u003c')).replace('<!--CSS-->', () => `<style>${r.code.replace(/<\/style/gi, '<\\/style')}</style>`).replace('<!--CATALOGUE-->',renderCatalogue).replace('<!--OWNER-PHOTOS-->',renderOwnerPhotos).replace('<!--MATERIALS-->',renderMaterials);
+  const html = fs.readFileSync(path.join(S, 'index.html'), 'utf8').replace('FACES', () => JSON.stringify(fr).replace(/</g, '\\u003c'))
+    .replace('<!--CSS-->', () => `<style>${r.code.replace(/<\/style/gi, '<\\/style')}</style>`)
+    .replace('<!--CATALOGUE-->',renderCatalogue).replace('<!--OWNER-PHOTOS-->',renderOwnerPhotos)
+    .replace('<!--MATERIALS-->',renderMaterials).replace('<!--DEFAULT-FABRIC-->',escapeHtml(materials.deportiva.label));
   fs.writeFileSync(path.join(O, 'index.html'), html);
   for (const f of ['index.html','js/app.js','js/studio.js','css/styles.css','css/fonts-inline.css']) console.log(f, (fs.statSync(path.join(O,f)).size/1024).toFixed(0)+' KB');
 })().catch(e => { console.error(e); process.exit(1); });

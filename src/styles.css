@@ -436,6 +436,25 @@ section[id],.viewer,.cfg{scroll-margin-top:64px}
 .catalogue-services .catalogue-text .catalogue-copy{flex:0 1 auto}
 .material-technique{font-size:12px;line-height:1.45;color:var(--mute);margin:9px 0 0}
 .studio-palette button[hidden]{display:none!important}
+.design-start{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.design-start button{min-width:0;border:1px solid var(--line);background:white;border-radius:13px;padding:11px;text-align:left;line-height:1.21;font:inherit;cursor:pointer}
+.design-start b,.design-start span{display:block}
+.design-start b{font-size:14px;letter-spacing:-.02em;line-height:1.18}
+.design-start span{margin-top:5px;color:var(--mute);font-size:11px;line-height:1.32}
+.design-start button[aria-pressed=true],.template-cards button[aria-pressed=true]{outline:2px solid var(--red);outline-offset:-2px;background:#fff8f7}
+.template-shelf{margin-top:11px}
+.template-cards{display:flex;gap:8px;overflow:auto;padding:4px 0 6px;scroll-snap-type:x mandatory;scrollbar-width:thin}
+.template-cards button{flex:0 0 31%;min-width:104px;border:1px solid var(--line);border-radius:11px;padding:4px;background:#fff;text-align:left;scroll-snap-align:start;cursor:pointer}
+.template-cards img{display:block;width:100%;height:auto;aspect-ratio:1;object-fit:cover;border-radius:7px;background:#efefef}
+.template-cards span{display:block;font-size:11px;font-weight:650;min-height:2.5em;line-height:1.16;padding:4px 3px 2px}
+.template-pair{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+.field select{width:100%;min-width:0;min-height:42px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);font:inherit;font-size:13px;padding:5px 8px}
+.print-placements{margin-top:12px;padding:9px 10px;border:1px solid var(--line);border-radius:12px}
+.print-placements summary{font-size:13px;font-weight:700;cursor:pointer}
+.print-placements .fields{margin-top:10px}
+.prints .p-tri{background:linear-gradient(to bottom,var(--a) 0 45%,var(--a2) 45% 65%,var(--a3) 65%)}
+.prints .p-dia{background:repeating-linear-gradient(140deg,var(--b) 0 9px,var(--a) 9px 16px,var(--a2) 16px 18px)}
+.prints .p-mot{background:radial-gradient(circle,var(--a) 24%,transparent 25%) 0 0/10px 10px,var(--b)}
 @media(max-width:768px){
  .catalogue-nav{justify-content:flex-start}
  .catalogue-services{margin-top:26px}

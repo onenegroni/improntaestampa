@@ -33,7 +33,7 @@ async function run(browser, mobile) {
       assert.equal(await page.evaluate(() => document.activeElement.textContent.trim()), 'Pedir presupuesto');
       await page.keyboard.press('Escape');
       await page.waitForFunction(() => document.activeElement.id === 'menuBtn');
-      await page.locator('#productos [data-product=campera]').click();
+      await page.locator('#catalogo-primaria [data-product=campera]').click();
       assert.equal(await page.getByRole('dialog', { name: 'Estudio de diseño' }).isVisible(), true);
       assert.equal(await page.locator('#crumbT').textContent(), 'Campera con capucha');
     }
@@ -41,13 +41,15 @@ async function run(browser, mobile) {
     assert.equal(await activeStep(page), 'Modelo');
     assert.equal(await page.locator('#autoBtn').getAttribute('aria-pressed'), 'false');
 
-    for (const product of ['campera', 'conjunto', 'musculosa', 'bandera', 'gorra', 'remera']) {
+    for (const product of ['campera', 'conjunto', 'short', 'musculosa', 'bandera', 'gorra', 'remera']) {
       await page.locator(`.chip[data-v=${product}]`).click();
       assert.equal(await studioState(page, 'producto'), product);
       if (product === 'bandera') assert.equal(await page.locator('#fixedFabric').textContent(), 'Poliéster sublimable');
     }
     await page.locator('.fab [data-v=modal]').click();
     assert.equal(await studioState(page, 'tela'), 'modal');
+    assert.match(await page.locator('#materialTechnique').textContent(), /Personalización a confirmar/);
+    await page.locator('.fab [data-v=deportiva]').click();
 
     if (!mobile && process.env.POSTER_OUT) {
       await page.locator('.fab [data-v=deportiva]').click();
@@ -216,8 +218,49 @@ async function run(browser, mobile) {
     const legacyQuote = new URL(await legacyPage.locator('#waBtn').getAttribute('href')).searchParams.get('text');
     assert.match(legacyQuote, /Short: #F2EFE9/);
     assert.match(legacyQuote, /Talle: XXL\n/);
+    await sharedPage.close();
+    await legacyPage.close();
+
+    await page.getByRole('tab',{name:'Modelo',exact:true}).click();
+    await page.locator('.chip[data-v=campera]').click();
+    await page.locator('[data-start=library]').click();
+    await page.locator('#templateCollection').selectOption('primaria');
+    const tricolor=page.locator('[data-template=tricolor]');
+    await tricolor.click();
+    assert.equal(await tricolor.getAttribute('aria-pressed'),'true');
+    assert.equal(await studioState(page,'preset'),'tricolor');
+    await tricolor.locator('img').evaluate(image=>image.decode());
+    await page.getByRole('tab',{name:'Color',exact:true}).click();
+    assert.deepEqual(await page.locator('#pcols .pc span').allTextContents(),['Superior','Central','Inferior']);
+    await page.locator('#pcols [data-i="1"]').click();
+    await page.locator('#slotPrint .cw-hex').fill('#EFC087');
+    await page.locator('#slotPrint .cw-hex').press('Enter');
+    assert.equal(await studioState(page,'colors.acento2'),'#efc087');
+    await page.getByRole('tab',{name:'Detalles',exact:true}).click();
+    await page.locator('#fNombre').fill('ALDI');
+    await page.locator('#sleeveLeft').fill('AM');
+    await page.locator('#sleeveRight').fill('6° B');
+    await page.locator('#printPlacements summary').click();
+    await page.locator('#nombreLugar').selectOption('pecho-izq');
+    await page.locator('#numeroLugar').selectOption('espalda-centro');
+    await page.locator('#tipografia').selectOption('college');
+    assert.equal(await page.locator('#nombreLugar option[value=pecho-centro]').count(),0);
+    const templateQuote=new URL(await page.locator('#waBtn').getAttribute('href')).searchParams.get('text');
+    assert.match(templateQuote,/Diseño base: Tricolor/);
+    assert.match(templateQuote,/Nombre: ALDI · pecho izquierdo/);
+    assert.match(templateQuote,/Manga izquierda: AM/);
+    assert.match(templateQuote,/Manga derecha: 6° B/);
+    const templateData=JSON.parse(Buffer.from(templateQuote.match(/#d=([\w=-]+)/)[1],'base64url'));
+    assert.equal(templateData.tipografia,'college');
+    assert.equal(templateData.numeroLugar,'espalda-centro');
+    assert.equal(templateData.plantilla,'tricolor');
+    await page.getByRole('tab',{name:'Modelo',exact:true}).click();
+    await page.locator('[data-start=blank]').click();
+    assert.equal(await studioState(page,'preset'),'liso');
+    assert.equal(await studioState(page,'nombre'),'');
+    assert.equal(await studioState(page,'plantilla'),'');
     assert.deepEqual(errors, []);
-    console.log(`PASS ${mobile ? 'mobile' : 'desktop'}: six products, fabric, kit color zones, patterns, text, logo, quote, shared and legacy designs, four PNGs and ZIP`);
+    console.log(`PASS ${mobile ? 'mobile' : 'desktop'}: seven products, fabric, kit colors, patterns, text, logo, compatible placements, templates, quote, shared and legacy designs, four PNGs and ZIP`);
   } finally {
     await context.close();
   }

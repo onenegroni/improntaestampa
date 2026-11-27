@@ -2,12 +2,13 @@
 import { createWheel, normHex } from './colorwheel.js';
 import { segments } from '../data/catalogue.json';
 import { PRODUCTS as P, MATERIALS, TECHNIQUES, LOCAL_DTF, CONSULT, optionsFor, compatiblePrint } from './product-data.js';
+import { ARTWORK, DESIGN_LIBRARY, PATTERNS, PERSONALIZATION, PLACEMENTS, TYPEFACES, availableTemplates, placementChoices } from './design-library.js';
 const CANONICAL_ORIGIN = 'https://improntaestampa.pages.dev/';
 const WA = '5492644127431';
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const PALETTE = [['#141414', 'Negro'], ['#f2efe9', 'Blanco'], ['#6b6b6b', 'Gris'], ['#b5141a', 'Rojo Impronta'], ['#e8742a', 'Naranja'], ['#f2c230', 'Amarillo'], ['#8fd3cf', 'Aqua'], ['#9fc8e8', 'Celeste'], ['#1e2f5c', 'Azul marino'], ['#5b2a86', 'Violeta']];
 const cname = h => (PALETTE.find(p => p[0] === h) || [0, h])[1];
-const PRESETS_P = { galactico: 'Galáctico', splash: 'Splash', degrade: 'Degradé', rayas: 'Rayas', tiedye: 'Tie-dye', manitos: 'Manitos', camuflaje: 'Camuflaje', geometrico: 'Geométrico', liso: 'Liso' };
+const PRESETS_P = Object.fromEntries(Object.entries(PATTERNS).map(([id,[label]])=>[id,label]));
 const PCOL = ['acento', 'acento2', 'acento3'];
 const ZONES = ['cuerpo', 'short', 'mangas', 'capucha', 'punos', 'malla'];
 const DEFAULT = { segmento: 'primaria', producto: 'remera', tela: 'deportiva', colors: { cuerpo: '#141414', short: '#141414', malla: '#141414', mangas: '#b5141a', capucha: '#141414', punos: '#f2efe9', acento: '#b5141a', acento2: '#f4f1ec', acento3: '#7a0d12' }, preset: 'splash', printAll: false, nombre: 'MELI', numero: '26', espalda: 'PROMO 26', escuela: 'ESCUELA SARMIENTO', frase: 'Más que una remera, un recuerdo para siempre', talle: 'M', cantidad: '30' };
@@ -15,13 +16,15 @@ const PRESETS = {
   promo26: {},
   galaxia: { producto: 'campera', tela: 'frizado', colors: { cuerpo: '#141414', mangas: '#141414', capucha: '#141414', punos: '#141414', acento: '#9fc8e8', acento2: '#6a2fa6', acento3: '#1f6fd1' }, preset: 'galactico', printAll: true, frase: 'Más que una campera, un recuerdo para siempre' },
   seleccion: { producto: 'conjunto', tela: 'deportiva', colors: { cuerpo: '#141414', mangas: '#141414', capucha: '#141414', punos: '#9fc8e8', acento: '#9fc8e8', acento2: '#f4f1ec', acento3: '#1e2f5c' }, preset: 'rayas', printAll: false, nombre: 'GÓMEZ', numero: '15', espalda: 'SELECCIÓN', escuela: 'CALINGASTA', frase: '' },
-  zumba: { producto: 'musculosa', tela: 'modal', colors: { cuerpo: '#f2efe9', mangas: '#f2efe9', capucha: '#f2efe9', punos: '#141414', acento: '#e8742a', acento2: '#e8742a', acento3: '#b5141a' }, preset: 'degrade', printAll: false, nombre: 'SOFI', numero: '', espalda: 'ZUMBA', escuela: 'REY PILATES', frase: '' },
+  zumba: { producto: 'musculosa', tela: 'deportiva', colors: { cuerpo: '#f2efe9', mangas: '#f2efe9', capucha: '#f2efe9', punos: '#141414', acento: '#e8742a', acento2: '#e8742a', acento3: '#b5141a' }, preset: 'degrade', printAll: false, nombre: 'SOFI', numero: '', espalda: 'ZUMBA', escuela: 'REY PILATES', frase: '' },
   tiedye: { producto: 'remera', tela: 'deportiva', colors: { cuerpo: '#2f8fe0', mangas: '#2f8fe0', capucha: '#2f8fe0', punos: '#141414', acento: '#e8432a', acento2: '#f2c230', acento3: '#8a3fb8' }, preset: 'tiedye', printAll: true },
   colorin: { producto: 'campera', tela: 'frizado', colors: { cuerpo: '#58b8ec', mangas: '#58b8ec', capucha: '#58b8ec', punos: '#141414', acento: '#e8432a', acento2: '#f2c230', acento3: '#7a3fb4' }, preset: 'manitos', printAll: true, nombre: 'MELI', numero: '', espalda: 'PRIMER GRADO', escuela: 'COLORÍN COLORADO', frase: 'Nos vemos en primer grado · Promo 26' },
   bandera: { producto: 'bandera', colors: { cuerpo: '#141414', mangas: '#141414', capucha: '#141414', punos: '#f2efe9', acento: '#b5141a' }, preset: 'splash', espalda: 'PROMO 26', escuela: 'ESCUELA SARMIENTO', talle: '150×90 cm' },
 };
 const clone = value => JSON.parse(JSON.stringify(value));
 const state = clone(DEFAULT);
+const cleanPersonalization = { nombre:'', numero:'', espalda:'', escuela:'', frase:'', mangaDer:'', mangaIzq:'',
+  nombreLugar:'', numeroLugar:'', espaldaLugar:'', logoLugar:'', arteLugar:'', tipografia:'', arte:'', plantilla:'' };
 const openedDesign = location.hash.startsWith('#d=');
 if (openedDesign) {
   try {
@@ -34,15 +37,21 @@ if (openedDesign) {
     for (const key of Object.keys(state.colors)) state.colors[key] = normHex(savedColors[key]) || state.colors[key];
     // Older kits used the shirt color for both garments.
     if (state.producto === 'conjunto' && !normHex(savedColors.short)) state.colors.short = state.colors.cuerpo;
-    for (const [key, limit] of Object.entries({ nombre: 14, numero: 3, espalda: 18, escuela: 32, frase: 48, talle: 24, cantidad: 4 })) {
+    for (const [key, limit] of Object.entries({ nombre: 14, numero: 3, espalda: 18, escuela: 32, frase: 48, mangaDer:9, mangaIzq:9, talle: 24, cantidad: 4 })) {
       if (typeof data[key] === 'string') state[key] = data[key].slice(0, limit);
     }
+    for (const key of Object.keys(PERSONALIZATION)) if (Object.prototype.hasOwnProperty.call(PLACEMENTS,data[key])) state[key]=data[key];
+    if (Object.prototype.hasOwnProperty.call(TYPEFACES,data.tipografia)) state.tipografia=data.tipografia;
+    if (Object.prototype.hasOwnProperty.call(ARTWORK,data.arte)) state.arte=data.arte;
+    if (DESIGN_LIBRARY.some(template=>template.id===data.plantilla)) state.plantilla=data.plantilla;
     if (state.producto === 'gorra' && state.talle === 'Único ajustable') state.talle = 'Adulto ajustable';
     if (/^T(?:S|M|L|XL|XXL)$/.test(state.talle)) state.talle = state.talle.slice(1);
     state.printAll = data.printAll === true;
   } catch (error) { /* A malformed link opens the default design. */ }
 }
 state.logoImg = null;
+let startMode = state.plantilla ? 'library' : '';
+let clearUploadedLogo;
 
 /* ---------- toast ---------- */
 let tt; function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(tt); tt = setTimeout(() => t.classList.remove('show'), 2600); }
@@ -50,7 +59,7 @@ let tt; function toast(msg) { const t = $('#toast'); t.textContent = msg; t.clas
 /* ---------- panel UI ---------- */
 const groups = $('#groups'), tabs = $('#mtabs');
 const STEPS = [
-  { id: 'modelo', label: 'Modelo', sections: ['producto', 'tela'] },
+  { id: 'modelo', label: 'Modelo', sections: ['inicio','producto','tela'] },
   { id: 'color', label: 'Color', sections: ['colores', 'estampa'] },
   { id: 'detalles', label: 'Detalles', sections: ['texto', 'logo'] },
   { id: 'pedido', label: 'Pedido', sections: ['talle'] },
@@ -91,6 +100,12 @@ function buildPanel() {
     groups.appendChild(step);
   });
 
+  $('#grp-inicio').innerHTML = `<h4>¿Cómo querés empezar?</h4><div class="design-start" role="group" aria-label="Punto de partida">
+    <button type="button" data-start="blank" aria-pressed="false"><b>Diseñá desde cero</b><span>Elegí tus colores, estampados y detalles para crear un diseño único.</span></button>
+    <button type="button" data-start="library" aria-pressed="false"><b>Elegí un diseño</b><span>Encontrá un estilo que te guste y personalizalo a tu manera.</span></button>
+    </div><div class="template-shelf" id="templateShelf" hidden><div class="field"><label for="templateCollection">Colección</label><select id="templateCollection"></select></div>
+    <div class="template-cards" id="templateCards" role="group" aria-label="Diseños editables"></div><p id="noTemplates" class="material-technique" hidden>Consultanos las opciones compatibles con esta tela o elegí otra tela para ver diseños.</p>
+    <div class="template-pair" id="templatePair" hidden><button type="button" class="studio-link" id="pairGarment"></button><button type="button" class="studio-link" id="pairCap">Diseñá la gorra a juego</button></div></div>`;
   $('#grp-producto').innerHTML = '<h4>Elegí el producto</h4><div class="chips" role="group" aria-label="Producto"></div>';
   Object.entries(P).forEach(([key, {label}]) => {
     const icon = `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">${SHAPES[key]}</svg>`;
@@ -111,9 +126,8 @@ function buildPanel() {
   $('#grp-estampa').innerHTML = `<h4>Estampado</h4><div class="prints" role="group" aria-label="Estampado"></div>
    <div id="pcols"><span class="pcl">Colores del estampado</span><div class="pchips">${PCOL.map((key, i) => `<button type="button" class="pc" data-i="${i}" aria-controls="slotPrint" aria-expanded="false"><i></i><span>Color ${i + 1}</span></button>`).join('')}</div></div>
    <div id="slotPrint"></div><label class="toggle"><input type="checkbox" id="printAll"> <span id="printAllText"></span></label>`;
-  const patternClasses = { galactico: 'p-gal', splash: 'p-spl', degrade: 'p-deg', rayas: 'p-ray', tiedye: 'p-tie', manitos: 'p-man', camuflaje: 'p-cam', geometrico: 'p-geo', liso: 'p-lis' };
-  ['liso', 'splash', 'degrade', 'rayas', 'galactico', 'tiedye', 'manitos', 'camuflaje', 'geometrico'].forEach(key => {
-    $('#grp-estampa .prints').appendChild(btn({ 'data-v': key }, `<i class="${patternClasses[key]}"></i><span>${PRESETS_P[key]}</span>`));
+  Object.entries(PATTERNS).forEach(([key,[label,style]]) => {
+    $('#grp-estampa .prints').appendChild(btn({ 'data-v': key }, `<i class="${style}"></i><span>${label}</span>`));
   });
 
   $('#grp-texto').innerHTML = `<h4>Texto <button class="studio-link" id="clearText" type="button">Borrar textos</button></h4><p class="material-technique" id="detailNote" hidden>Consultanos qué personalización es compatible con esta tela.</p><div class="fields">
@@ -122,8 +136,14 @@ function buildPanel() {
    <div class="field full"><label id="labelPrintText" for="fEsp">Texto de espalda</label><input id="fEsp" maxlength="18" data-k="espalda" placeholder="Ej. Promo 26"></div>
    <div class="field full"><label for="fEsc">Escuela, curso o club</label><input id="fEsc" maxlength="32" data-k="escuela"></div>
    <div class="field full"><label for="fFrase">Frase</label><input id="fFrase" maxlength="48" data-k="frase"></div>
+   <div class="field"><label for="sleeveLeft">Iniciales · manga izquierda</label><input id="sleeveLeft" maxlength="9" data-k="mangaIzq" placeholder="Ej. A. M."></div>
+   <div class="field"><label for="sleeveRight">Iniciales · manga derecha</label><input id="sleeveRight" maxlength="9" data-k="mangaDer" placeholder="Ej. 6° A"></div>
    </div>`;
-  $('#grp-logo').innerHTML = `<h4>Logo <em>Opcional</em></h4>
+  $('#grp-texto').insertAdjacentHTML('beforeend',`<details id="printPlacements" class="print-placements"><summary>Ubicaciones, tipografía y motivos</summary><div class="fields">
+    <div class="field"><label for="tipografia">Tipografía</label><select id="tipografia" data-design-field="tipografia"></select></div>
+    <div class="field"><label for="arte">Motivo gráfico</label><select id="arte" data-design-field="arte"></select></div>
+    ${Object.entries(PERSONALIZATION).map(([field,[label]])=>`<div class="field"><label for="${field}">${label}</label><select id="${field}" data-design-field="${field}"></select></div>`).join('')}</div></details>`);
+  $('#grp-logo').innerHTML = `<h4>Logo o gráfica <em>Opcional</em></h4>
    <label class="drop" id="drop"><img class="logo-thumb" alt="" hidden><span class="dt"><b id="logoLabel">Subí tu logo</b><small id="logoHint"></small></span><span class="ac">Elegir archivo</span><input type="file" id="fLogo" accept="image/png,image/jpeg,image/svg+xml,image/webp" class="sr"></label>
    <button type="button" id="removeLogo" class="studio-link" hidden>Quitar logo</button>`;
 
@@ -154,8 +174,66 @@ function selectStep(index, focus = false) {
   if (focus) $('#tab-' + step.id).focus({preventScroll: true});
 }
 function sizeList() { return P[state.producto].sizes; }
+function setSelect(select, entries, value) {
+  const key = JSON.stringify(entries);
+  if (select.dataset.options !== key) {
+    select.replaceChildren(...entries.map(([id,label])=>new Option(label,id)));
+    select.dataset.options = key;
+  }
+  select.value = entries.some(([id])=>id === value) ? value : entries[0]?.[0] || '';
+}
+function syncTemplateShelf(settings) {
+  const shown = startMode === 'library';
+  $('#templateShelf').hidden = !shown;
+  $$('[data-start]',groups).forEach(button=>button.setAttribute('aria-pressed',button.dataset.start===startMode));
+  if (!shown) return;
+  const collection = $('#templateCollection');
+  const entries = settings.product.segments.map(segment=>[segment,segments[segment]]);
+  setSelect(collection,entries,settings.segment);
+  collection.closest('.field').hidden = entries.length < 2;
+  const templates = availableTemplates(state);
+  const cards = $('#templateCards');
+  const filter = `${state.producto}/${settings.segment}/${settings.technique}`;
+  if (cards.dataset.filter !== filter) {
+    cards.replaceChildren(...templates.map(template=>{
+      const alternate = template.id === 'tricolor' && state.producto === 'remera' ? '-remera' : '';
+      return btn({ 'data-template':template.id },`<img src="img/plantillas/${template.id}${alternate}.webp" alt="" width="264" height="256" loading="lazy" decoding="async"><span>${template.label}</span>`);
+    }));
+    cards.dataset.filter = filter;
+    cards.scrollLeft=0;
+  }
+  $$('#templateCards button').forEach(button=>button.setAttribute('aria-pressed',button.dataset.template===state.plantilla));
+  $('#noTemplates').hidden = templates.length > 0;
+  $('#noTemplates').textContent = settings.technique===CONSULT ? 'Consultanos qué diseños son compatibles con esta tela.' : 'Para este producto podés diseñar desde cero.';
+  const selected = templates.find(template=>template.id===state.plantilla);
+  const pair = selected?.products.includes('campera') && selected?.products.includes('remera') && settings.segment!=='empresas';
+  const next = state.producto==='campera'?'remera':'campera';
+  $('#templatePair').hidden = !pair;
+  $('#pairGarment').textContent = `Diseñá la ${next} a juego`;
+  $('#pairGarment').dataset.pair = next;
+  $('#pairCap').hidden = !selected || !['tricolor','varsity','argentina'].includes(selected.id);
+}
+function syncPrintDetails(settings) {
+  const { fields, regions } = settings;
+  const atlasPlacements = regions.some(region=>region.startsWith('pecho'));
+  const hasType = fields.includes('espalda') || fields.includes('nombre') || fields.includes('numero');
+  $('#printPlacements').hidden = !hasType || (!atlasPlacements && state.producto !== 'gorra');
+  $('#arte').closest('.field').hidden = !atlasPlacements;
+  setSelect($('#tipografia'),Object.entries(TYPEFACES),state.tipografia);
+  setSelect($('#arte'),Object.entries(ARTWORK),state.arte);
+  for (const [field,[,base]] of Object.entries(PERSONALIZATION)) {
+    const select = $('#'+field);
+    const target = field.replace('Lugar','');
+    const choices = placementChoices(settings,field);
+    select.closest('.field').hidden = !choices.length || (field==='arteLugar' ? !state.arte || state.arte==='ninguno' : !fields.includes(target));
+    if (!choices.length) continue;
+    const label = PLACEMENTS[choices.includes(base) ? base : choices[0]];
+    setSelect(select,[['',`Habitual · ${label}`],...choices.map(choice=>[choice,PLACEMENTS[choice]])],state[field]);
+  }
+}
 function sync() {
-  const { product:pr, segment, materialId, material, technique, zones, patterns, fields, materials } = optionsFor(state);
+  const settings = optionsFor(state);
+  const { product:pr, segment, materialId, material, technique, zones, patterns, fields, materials } = settings;
   state.segmento = segment;
   if (materialId) state.tela = materialId;
   const display = compatiblePrint(state);
@@ -172,6 +250,7 @@ function sync() {
   $('#fixedFabric').hidden = !pr.fixed;
   const method = TECHNIQUES[technique];
   $('#materialTechnique').textContent = `${method.label} · ${method.description}`;
+  syncTemplateShelf(settings);
 
   if (!zones[zone]) zone = Object.keys(zones)[0];
   const customZone = active?.kind === 'zone';
@@ -199,9 +278,12 @@ function sync() {
   if (plain && active?.kind === 'print') closeWheel();
   $$('#pcols .pc').forEach((button, i) => {
     button.querySelector('i').style.background = state.colors[PCOL[i]];
+    button.querySelector('span').textContent = state.preset === 'tricolor' ? ['Superior','Central','Inferior'][i] : `Color ${i+1}`;
     button.setAttribute('aria-expanded', active?.kind === 'print' && active.i === i);
   });
   $$('#grp-estampa .prints button').forEach(button => {
+    const illustrated = PATTERNS[button.dataset.v][1] === 'p-mot';
+    button.hidden = illustrated && button.dataset.v !== state.preset && !['inicial','primaria'].includes(segment);
     button.setAttribute('aria-pressed', button.dataset.v === state.preset);
     const swatch = button.querySelector('i').style;
     swatch.setProperty('--b', state.colors.cuerpo);
@@ -217,8 +299,9 @@ function sync() {
   $('#detailNote').hidden = technique !== CONSULT;
   $('#grp-logo').hidden = !fields.includes('logo');
   $('#clearText').hidden = technique === CONSULT;
+  syncPrintDetails(settings);
   $('#labelPrintText').textContent = accessory ? 'Texto principal' : 'Texto de espalda';
-  $('#logoHint').textContent = accessory ? 'PNG, JPG, SVG o WebP · frente' : 'PNG, JPG, SVG o WebP · en el pecho';
+  $('#logoHint').textContent = accessory ? 'PNG, JPG, SVG o WebP · frente' : 'PNG, JPG, SVG o WebP · ubicación editable';
   $$('#groups input[data-k]').forEach(input => {
     if (document.activeElement !== input) input.value = state[input.dataset.k] ?? '';
   });
@@ -266,20 +349,27 @@ function saveHash() {
   }, 400);
 }
 function waLink() {
-  const {product:pr,segment, zones:z, material, technique, fields, patterns} = optionsFor(state);
+  const settings = optionsFor(state);
+  const {product:pr,segment, zones:z, material, technique, fields, patterns} = settings;
   const design = compatiblePrint(state);
   const hx = h => { const n = cname(h); return h.toUpperCase() + (n !== h ? ` (${n})` : ''); };
   const cols = Object.entries(z).map(([k, l]) => `${l}: ${hx(design.colors[k])}`);
+  const template = availableTemplates(state).find(value=>value.id===state.plantilla);
+  const place = key => placementChoices(settings,key).includes(design[key]) ? ` · ${PLACEMENTS[design[key]].toLowerCase()}` : '';
   const L = [
     '¡Hola Impronta! Quiero pedir presupuesto por este diseño:', '',
     `• Producto: ${pr.crumb}`, `• Categoría: ${segments[segment]}`, `• Tela: ${material?.label || pr.fixed}`,
     `• Técnica: ${TECHNIQUES[technique].label}`, `• Colores por zona: ${cols.join(' · ')}`,
+    template && `• Diseño base: ${template.label}`,
     patterns && `• Estampado: ${PRESETS_P[design.preset]}${design.printAll && design.preset !== 'liso' && z.mangas && !pr.fixed ? (z.capucha ? ' (incluye mangas y capucha)' : ' (incluye mangas)') : ''}`,
     design.preset !== 'liso' && `• Colores del estampado: ${PCOL.map((k, i) => `${i + 1}) ${hx(design.colors[k])}`).join(' · ')}`,
-    fields.includes('nombre') && design.nombre && `• Nombre: ${design.nombre}`, fields.includes('numero') && design.numero && `• Número: ${design.numero}`,
-    fields.includes('espalda') && design.espalda && `• ${pr.fixed ? 'Texto principal' : 'Texto espalda'}: ${design.espalda}`,
+    fields.includes('nombre') && design.nombre && `• Nombre: ${design.nombre}${place('nombreLugar')}`, fields.includes('numero') && design.numero && `• Número: ${design.numero}${place('numeroLugar')}`,
+    fields.includes('espalda') && design.espalda && `• ${pr.fixed ? 'Texto principal' : 'Texto espalda'}: ${design.espalda}${place('espaldaLugar')}`,
     fields.includes('escuela') && design.escuela && `• Escuela / curso: ${design.escuela}`, fields.includes('frase') && design.frase && `• Frase: ${design.frase}`,
-    fields.includes('logo') && state.logoImg && '• Logo: lo adjunto en este chat',
+    fields.includes('mangaIzq') && design.mangaIzq && `• Manga izquierda: ${design.mangaIzq}`,
+    fields.includes('mangaDer') && design.mangaDer && `• Manga derecha: ${design.mangaDer}`,
+    fields.includes('logo') && design.logoImg && `• Logo: lo adjunto en este chat${place('logoLugar')}`,
+    design.arte && design.arte !== 'ninguno' && settings.regions.some(region=>region.startsWith('pecho')) && `• Motivo: ${ARTWORK[design.arte]}${place('arteLugar')}`,
     technique === LOCAL_DTF && '• Confirmame los colores de remera disponibles.', `• Talle: ${state.talle}`, state.cantidad && `• Cantidad aprox.: ${state.cantidad}`, '',
     `Ver el diseño en 3D: ${location.protocol === 'file:' || /^localhost$|^127\.0\.0\.1$/.test(location.hostname) ? CANONICAL_ORIGIN : location.href.split('#')[0]}${designHash()}`,
     '', 'Detalles extra: ',
@@ -291,6 +381,26 @@ function wire() {
     const button = e.target.closest('button');
     if (!button || button.disabled || button.hidden || button.closest('.cw')) return;
     const { v, z, i, hex } = button.dataset;
+    if (button.dataset.start) {
+      startMode=button.dataset.start;
+      if (startMode==='blank') {
+        Object.assign(state,cleanPersonalization,{preset:'liso',printAll:false});
+        clearUploadedLogo(false);
+        api?.repaint();
+      }
+      sync();
+      return;
+    }
+    if (button.dataset.template) { applyTemplate(button.dataset.template); return; }
+    if (button.dataset.pair) { setProduct(button.dataset.pair, state.segmento); return; }
+    if (button.id==='pairCap') {
+      const band=state.colors.acento3;
+      const caption=state.nombre || state.espalda || 'PROMO 26';
+      Object.assign(state.colors,{cuerpo:'#f2efe9',mangas:band,malla:band,punos:band});
+      Object.assign(state,{preset:'liso',printAll:false,plantilla:'gorra-promo',espalda:caption});
+      setProduct('gorra','accesorios');
+      return;
+    }
     if (button.matches('.chip')) setProduct(v);
     if (button.closest('.fab') && optionsFor(state).materials.includes(v)) { closeWheel(); state.tela = v; sync(); api?.repaint(); }
     if (z) selectZone(z);
@@ -301,7 +411,7 @@ function wire() {
     }
     if (button.matches('.pc')) {
       if (active?.kind === 'print' && active.i === Number(i)) closeWheel();
-      else openWheel({ kind: 'print', key: PCOL[i], i: Number(i) }, $('#slotPrint'), `Color ${Number(i) + 1} del estampado`);
+      else openWheel({ kind: 'print', key: PCOL[i], i: Number(i) }, $('#slotPrint'), button.textContent.trim());
     }
     if (button.closest('.prints') && optionsFor(state).patterns) { state.preset = v; sync(); api?.repaint(); }
     if (button.closest('.sizes')) { state.talle = v; sync(); if (state.producto === 'bandera' || state.producto === 'gorra') api?.rebuild(false); }
@@ -310,6 +420,19 @@ function wire() {
       sync();
       api?.repaint();
     }
+  });
+  $('#templateCollection').addEventListener('change',event=>{
+    state.segmento=event.target.value;
+    sync();
+    api?.repaint();
+  });
+  $('#printPlacements').addEventListener('change',event=>{
+    const {designField}=event.target.dataset;
+    if(!designField) return;
+    state[designField]=event.target.value;
+    focusPlacement(event.target.value);
+    sync();
+    api?.repaint();
   });
   $('#printAll').addEventListener('change', e => { state.printAll = e.target.checked; sync(); api?.repaint(); });
   let textTimer;
@@ -325,6 +448,9 @@ function wire() {
     });
     input.addEventListener('focus', () => {
       if (input.id === 'fCant') return;
+      const key=input.dataset.k;
+      if (key==='mangaIzq' || key==='mangaDer') {focusPlacement(key==='mangaIzq'?'manga-izq':'manga-der');return;}
+      if (state[key+'Lugar']) {focusPlacement(state[key+'Lugar']);return;}
       const accessory = Boolean(P[state.producto].fixed);
       const front = accessory || state.producto === 'short' || input.id === 'fNombre' || (input.id === 'fEsc' && state.producto !== 'campera');
       if (api) showAngle(front ? 0 : Math.PI);
@@ -335,7 +461,8 @@ function wire() {
   let logoRequest = 0;
   function takeLogo(upload) {
     if (!upload) return;
-    if (!/^image\/(png|jpeg|svg\+xml|webp)$/.test(upload.type)) return toast('Elegí un logo en PNG, JPG, SVG o WebP.');
+    if (!optionsFor(state).fields.includes('logo')) return;
+    if (!/^image\/(png|jpeg|svg\+xml|webp)$/.test(upload.type)) return toast('Elegí una gráfica en PNG, JPG, SVG o WebP.');
     const request = ++logoRequest;
     const url = URL.createObjectURL(upload);
     const image = new Image();
@@ -349,7 +476,7 @@ function wire() {
       $('#logoLabel').textContent = upload.name;
       $('#removeLogo').hidden = false;
       sync();
-      showAngle(0);
+      focusPlacement(state.logoLugar || 'pecho-izq');
       api?.repaint();
       toast('Logo aplicado al diseño');
     };
@@ -363,7 +490,7 @@ function wire() {
   ['dragenter', 'dragover'].forEach(type => drop.addEventListener(type, e => { e.preventDefault(); drop.classList.add('over'); }));
   ['dragleave', 'drop'].forEach(type => drop.addEventListener(type, e => { e.preventDefault(); drop.classList.remove('over'); }));
   drop.addEventListener('drop', e => takeLogo(e.dataTransfer.files[0]));
-  $('#removeLogo').addEventListener('click', () => {
+  clearUploadedLogo = (focus = true) => {
     logoRequest++;
     URL.revokeObjectURL(logoUrl);
     logoUrl = '';
@@ -374,8 +501,9 @@ function wire() {
     $('#logoLabel').textContent = 'Subí tu logo';
     sync();
     api?.repaint();
-    file.focus();
-  });
+    if (focus) file.focus();
+  };
+  $('#removeLogo').addEventListener('click', () => clearUploadedLogo());
   tabs.addEventListener('click', e => {
     const pick = e.target.closest('[data-index]');
     if (pick) selectStep(Number(pick.dataset.index));
@@ -466,7 +594,7 @@ function setProduct(product, segment, size) {
   if (state.frase === P[state.producto].frase) state.frase = P[product].frase;
   state.producto = product;
   if (segment === 'empresas' && state.segmento !== segment) {
-    Object.assign(state, {preset:'liso', printAll:false, nombre:'', numero:'', espalda:'', escuela:'', frase:''});
+    Object.assign(state, cleanPersonalization, {preset:'liso', printAll:false});
   }
   if (segment && segments[segment]) state.segmento = segment;
   if (segment === 'empresas' && product === 'remera') state.tela = 'algodon';
@@ -498,7 +626,7 @@ function load3D() {
   loading = (async () => {
     if (!webglOK()) throw new Error('WebGL no disponible');
     if (!window.ImprontaStudio) await loadScript('js/studio.js');
-    const fontSpecs = ['14px Anton', '600 14px "Barlow Condensed"', 'italic 14px "DM Serif Display"'];
+    const fontSpecs = ['14px Anton', '600 14px "Barlow Condensed"', 'italic 14px "DM Serif Display"', '700 14px "Inter Tight"'];
     let fontsLoaded = false;
     const printFontsReady = Promise.all(fontSpecs.map(spec =>
       Promise.resolve().then(() => document.fonts.load(spec)).catch(() => [])
@@ -521,7 +649,7 @@ function load3D() {
       } });
     });
     if (!fontsLoadedAtStart) printFontsReady.then(() => api?.refreshPrintFonts());
-    window.__impronta = { api, state, applyPreset, sync, loadMs: Math.round(performance.now() - t0) };
+    window.__impronta = { api, state, applyPreset, applyTemplate, templates:DESIGN_LIBRARY, sync, loadMs: Math.round(performance.now() - t0) };
     applyFit();
     api.onZonePick(z => selectZone(z, true));
     api.setZones(() => Object.keys(optionsFor(state).zones));
@@ -662,11 +790,33 @@ document.addEventListener('keydown', e => { if (!$('#lb').classList.contains('op
 let tx0 = null; $('#lb .stage').addEventListener('touchstart', e => (tx0 = e.touches[0].clientX), { passive: true }); $('#lb .stage').addEventListener('touchend', e => { if (tx0 == null) return; const d = e.changedTouches[0].clientX - tx0; if (Math.abs(d) > 50) showLb(lbI + (d < 0 ? 1 : -1)); tx0 = null; });
 
 /* ---------- gallery ---------- */
+function focusPlacement(place) {
+  if (!api || !PLACEMENTS[place]) return;
+  const side = place==='manga-izq' ? -1 : 1;
+  const yaw = place.startsWith('manga') ? side*Math.PI*.36 : place.startsWith('espalda') ? Math.PI : 0;
+  showAngle(yaw);
+}
+function applyTemplate(id) {
+  const template=availableTemplates(state).find(value=>value.id===id);
+  if (!template) return false;
+  const previous=DESIGN_LIBRARY.find(value=>value.id===state.plantilla)?.design || DEFAULT;
+  const edits=Object.fromEntries(['nombre','numero','espalda','escuela','frase','mangaIzq','mangaDer']
+    .filter(key=>state[key] && state[key]!==previous[key] && (key!=='frase'||state.frase!==P[state.producto].frase))
+    .map(key=>[key,state[key]]));
+  const colors={...state.colors,...template.design.colors};
+  if (state.producto==='short' || state.producto==='conjunto') colors.short=template.design.colors.cuerpo;
+  closeWheel();
+  Object.assign(state,cleanPersonalization,template.design,edits,{ colors,plantilla:id });
+  sync();
+  api?.repaint();
+  return true;
+}
 function applyPreset(key) {
   const preset = clone(PRESETS[key] || {});
   const base = clone(DEFAULT);
   const logo = state.logoImg;
-  Object.assign(state, base, preset, { colors: { ...base.colors, ...preset.colors }, logoImg: logo });
+  Object.assign(state, cleanPersonalization, base, preset, { colors: { ...base.colors, ...preset.colors }, logoImg: logo });
+  startMode='';
   closeWheel();
   sync();
   selectStep(1);

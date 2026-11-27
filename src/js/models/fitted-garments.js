@@ -48,6 +48,9 @@ function decode(kind) {
       }
       uv[i * 2] = data.getUint16(offset + 10, true) / 65535;
       uv[i * 2 + 1] = data.getUint16(offset + 12, true) / 65535;
+      if ((name === 'sleeve' || name === 'sleeveThread') && kind !== 'hoodie') {
+        uv[i * 2] = .5 * (uv[i * 2] + Number(position[xyz] > 0));
+      }
     }
     if (!indexCount) continue;
     const index = new Uint16Array(indexCount);

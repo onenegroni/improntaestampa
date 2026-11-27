@@ -134,13 +134,91 @@ function hand(g, R, x, y, scale, rotation, color) {
   }
   g.restore();
 }
+
+const motifPaths = {
+  dinosaurios: 'M-.87 .19Q-.58 .3-.44-.16Q-.32-.38-.1-.31L.33-.27Q.3-.6.54-.61Q.85-.65.88-.27L.66-.08 .55-.14 .42 .27 .46 .59 .23 .59 .12 .34-.2 .35-.23 .59-.44 .59-.43 .31Q-.66 .42-.87 .19Z',
+  heroes: 'M0-.72Q.43-.49.73-.47L.65 .2Q.51 .54 0 .74Q-.51 .54-.65 .2L-.73-.47Q-.4-.49 0-.72Z',
+  doodles: 'M-.69 .24Q-.82-.12-.62-.44L-.7-.77Q-.37-.78-.25-.56Q.04-.66.27-.52L.56-.71 .55-.39Q.82-.34.78 .06Q.8 .7 .2 .73L-.35 .65Q-.59 .65-.69 .24Z',
+  egresaditos: 'M-.78-.13 0-.57 .78-.13 0 .31Z M-.42 .19 0 .45 .42 .19 .42 .48Q0 .79-.42 .48Z',
+  corona: 'M-.8-.38-.39-.08 0-.57 .39-.08 .8-.38 .63 .48-.63 .48Z',
+  escudo: 'M0-.78 .65-.42 .58 .38 0 .76-.58 .38-.65-.42Z',
+};
+const motifCache = {};
+function star(g, radius, points) {
+  g.beginPath();
+  for (let i=0;i<points*2;i++) {
+    const angle = i*Math.PI/points - Math.PI/2, edge = i % 2 ? radius * .43 : radius;
+    g.lineTo(Math.cos(angle)*edge,Math.sin(angle)*edge);
+  }
+  g.closePath(); g.fill();
+}
+function circle(g,x,y,radius) { g.beginPath();g.arc(x,y,radius,0,Math.PI*2);g.fill(); }
+function drawMotif(g, kind, x, y, size, color, accent) {
+  g.save(); g.translate(x,y); g.scale(size,size); g.fillStyle=color; g.strokeStyle=color;
+  if (motifPaths[kind]) {
+    const path = motifCache[kind] ||= new Path2D(motifPaths[kind]);
+    g.fill(path);
+    g.fillStyle=accent;
+    if (kind === 'heroes') g.fill(new Path2D('M.11-.52-.38.08-.02.06-.17.55.43-.1.06-.04Z'));
+    if (kind === 'dinosaurios') circle(g,.61,-.46,.053);
+    if (kind === 'doodles') {circle(g,-.24,-.12,.11);circle(g,.23,-.1,.17);circle(g,.05,.30,.10);}
+    if (kind === 'escudo') star(g,.41,5);
+  } else if (kind === 'estrellas') {
+    star(g,.75,5);
+  } else if (kind === 'planetitas') {
+    circle(g,0,0,.59);
+    g.strokeStyle=accent;g.lineWidth=.11;
+    g.beginPath();g.ellipse(0,.05,.97,.25,-.40,0,Math.PI*2);g.stroke();
+  } else if (kind === 'arcoiris') {
+    [color,accent,mix(color,accent,.47)].forEach((tone,index)=>{
+      g.strokeStyle=tone;g.lineWidth=.15;g.beginPath();g.arc(0,.34,.73-index*.20,Math.PI,Math.PI*2);g.stroke();
+    });
+  } else if (kind === 'sol') {
+    star(g,.94,20);circle(g,0,0,.50);g.fillStyle=accent;circle(g,0,0,.34);
+  } else if (kind === 'laureles') {
+    g.lineWidth=.045;
+    for (const side of [-1,1]) {
+      g.beginPath();g.moveTo(side*.15,.68);g.quadraticCurveTo(side*.86,.44,side*.78,-.68);g.stroke();
+      for (let i=0;i<6;i++) {
+        const t=i/5;
+        g.beginPath();g.ellipse(side*(.32+.46*Math.sin(t*1.48)),.55-1.12*t,.078,.19,side*(.78-.42*t),0,Math.PI*2);g.fill();
+      }
+    }
+  }
+  g.restore();
+}
+
 export function drawPattern(g, preset, base, accentIn, w, h, { seed = 3, k = 1, region = 'body' } = {}) {
   if (preset !== 'tiedye') dyeFields.delete(g);
   const R = rng(seed);
   const [accent, ac2, ac3] = Array.isArray(accentIn) ? accentIn : [accentIn, '#f4f1ec', accentIn];
   g.save();
   g.fillStyle = base; g.fillRect(0, 0, w, h);
-  if (preset === 'galactico') {
+  if (preset === 'tricolor') {
+    // Both sides and the raglan charts share the same vertical print register.
+    [[accent,0,.47],[ac2,.47,.64],[ac3,.64,1]].forEach(([colour,top,bottom])=>{
+      g.fillStyle=colour;g.fillRect(0,h*top,w,h*(bottom-top)+.4);
+    });
+  } else if (preset === 'diagonal') {
+    g.translate(w*.50,h*.52);g.rotate(-.37);
+    const spacing=245*k;
+    for(let x=-w-h;x<w+h;x+=spacing){
+      g.fillStyle=accent;g.fillRect(x,-h*2,spacing*.32,h*4);
+      g.fillStyle=ac2;g.fillRect(x+spacing*.35,-h*2,spacing*.033,h*4);
+    }
+  } else if (['dinosaurios','planetitas','estrellas','heroes','doodles','arcoiris','egresaditos'].includes(preset)) {
+    const cell=Math.max(52,155*k);
+    const colours=[accent,ac2,ac3];
+    for(let row=0;row<Math.ceil(h/cell);row++){
+      for(let col=-1;col<=Math.ceil(w/cell);col++){
+        const x=(col+.45+(row%2)*.45+R()*.22)*cell,y=(row+.35+R()*.30)*cell;
+        const colour=colours[Math.floor(R()*colours.length)];
+        g.globalAlpha=region==='body' && y<h*.55 ? .26 : .89;
+        drawMotif(g,preset,x,y,cell*(.24+R()*.15),colour,base);
+        g.fillStyle=colour;circle(g,x+cell*.43,y-cell*.23,cell*.028);
+      }
+    }
+  } else if (preset === 'galactico') {
     g.fillStyle = mix('#070b22', base, 0.15); g.fillRect(0, 0, w, h);
     const cols = [ac3, mix(ac3, '#ffffff', 0.18), ac2, mix(ac2, '#ff4fd8', 0.15), accent];
     for (let i = 0; i < 70; i++) {
@@ -247,10 +325,90 @@ function line(g, x1, y1, x2, y2) {
   g.lineTo(x2, y2);
   g.stroke();
 }
+
+function placementFont(type, size) {
+  if (type === 'college') return `bold ${size}px Georgia`;
+  if (type === 'moderna') return `700 ${size}px "Inter Tight"`;
+  return `${size}px Anton`;
+}
+function placementBase(design, y, h, base) {
+  if (design.preset === 'tricolor') return y < h*.47 ? design.colors.acento : y < h*.64 ? design.colors.acento2 : design.colors.acento3;
+  return design.preset === 'galactico' ? '#0a0f2a' : base;
+}
+function placedText(g, value, x, y, width, size, design, base) {
+  const text = String(value).toUpperCase();
+  if (!text) return;
+  g.textAlign='center';g.textBaseline='middle';g.fillStyle=ink(base);
+  fitText(g,text,s=>placementFont(design.tipografia,s),width,size);
+  const outlined = design.tipografia === 'varsity' || ['splash','geometrico','tricolor','tiedye','doodles'].includes(design.preset);
+  if (outlined) {
+    g.lineJoin='round';g.lineWidth=Math.min(6,size*.115);g.strokeStyle=base;
+    g.strokeText(text,x,y);
+  }
+  g.fillText(text,x,y);
+}
+function placementContent(st) {
+  const entries = [
+    [st.nombreLugar || 'pecho-der','text',st.nombre,'name'],
+    [st.numeroLugar || 'espalda-centro','number',st.numero,'number'],
+    [st.espaldaLugar || 'espalda-baja','text',st.espalda,'back'],
+    [st.logoLugar || 'pecho-izq','logo',st.logoImg,'logo'],
+    [st.arteLugar || 'espalda-centro','artwork',st.arte === 'ninguno' ? '' : st.arte,'artwork'],
+    ['espalda-baja','text',st.escuela,'small'],
+    ['espalda-baja','text',st.frase,'small'],
+  ];
+  return entries.filter(([, ,value])=>value);
+}
+function drawPlaced(g, entries, x, y, width, height, state, base) {
+  const text = entries.filter(([,kind])=>kind !== 'artwork');
+  const art = entries.find(([,kind])=>kind === 'artwork');
+  const adornsNumber = art?.[2] === 'laureles' && text.length === 1 && text[0][1] === 'number';
+  if (adornsNumber) {
+    g.save();g.translate(x,y);g.scale(1.64,1);
+    drawMotif(g,'laureles',0,0,height*.57,ink(base),base);
+    g.restore();
+  }
+  const items = art && !adornsNumber ? [art,...text] : text;
+  const slot = height / items.length;
+  items.forEach(([,kind,value,role],index)=>{
+    const cy=y+(index-(items.length-1)*.5)*slot;
+    if (kind==='logo') drawLogo(g,value,x,cy,width*.80,slot*.86);
+    else if (kind==='artwork') drawMotif(g,value,x,cy,Math.min(width*.34,slot*.60),ink(base),state.colors.acento);
+    else {
+      const maxFont = role==='small' ? 32 : kind==='number' ? 208 : role==='name' ? 58 : 79;
+      placedText(g,value,x,cy,width*(adornsNumber ? .54 : 1),Math.min(maxFont,slot*.86),state,base);
+    }
+  });
+}
+function torsoPlacements(g, st, product, Y, W, H) {
+  const jacket = product==='campera';
+  const localized = st.hideAutoMark;
+  const chestY=Y(jacket ? .052 : .054), sx=W/2048;
+  const zones = {
+    'pecho-izq':[jacket?674:671,chestY,177,95],
+    'pecho-der':[jacket?350:347,chestY,177,95],
+    'espalda-alta':[1536,Y(jacket?-.017:.108),400,91],
+    'espalda-centro':[1536,Y(jacket?-.122:-.012),470,localized?136:191],
+    'espalda-baja':[1536,Y(jacket?-.234:-.171),490,104],
+  };
+  if (!jacket) zones['pecho-centro']=[512,Y(-.039),373,localized?116:142];
+  const entries=placementContent(st);
+  g.save();
+  for (const [zone,[x,y,width,height]] of Object.entries(zones)) {
+    const here=entries.filter(([place])=>place===zone || (jacket && zone==='pecho-der' && place==='pecho-centro'));
+    if(here.length) drawPlaced(g,here,x*sx,y,width*sx,height*sx,st,placementBase(st,y,H,st.colors.cuerpo));
+  }
+  if (!localized) imMark(g,1536*sx,Y(jacket ? .069 : .195),13*sx);
+  g.restore();
+}
 export function torsoCanvas(cv, st, { vOf, product }) {
   const W = cv.width, H = cv.height, g = cv.context;
   drawPattern(g, st.preset, st.colors.cuerpo, pcols(st), W, H, { seed: 11, k: W / 2048, region: 'body' });
   const Y = y => (1 - vOf(y)) * H;
+  if (st.nombreLugar || st.numeroLugar || st.logoLugar || st.espaldaLugar || st.arte || st.tipografia || st.hideAutoMark) {
+    torsoPlacements(g, st, product, Y, W, H);
+    return;
+  }
   const base = st.preset === 'galactico' ? '#0a0f2a' : (st.preset === 'tiedye' || st.preset === 'manitos') ? '#1b1f3b' : st.colors.cuerpo;
   const t = ink(base), sx = W / 2048;
   g.textBaseline = 'alphabetic';
@@ -309,6 +467,31 @@ export function plainCanvas(cv, st, zone, { pattern = false, seed = 5 } = {}) {
   if (pattern && st.preset !== 'liso') drawPattern(g, st.preset, st.colors[zone], pcols(st), cv.width, cv.height, { seed, k: cv.width / 2048, region: 'side' });
   else { dyeFields.delete(g); g.fillStyle = st.colors[zone]; g.fillRect(0, 0, cv.width, cv.height); }
 }
+export function sleeveCanvas(cv, st) {
+  plainCanvas(cv,st,'mangas',{pattern:st.printAll,seed:9});
+  const g=cv.context, W=cv.width, H=cv.height;
+  if (st.printAll && st.preset !== 'liso') {
+    const canvas=cv.canvas;
+    g.drawImage(canvas,0,0,canvas.width,canvas.height,0,0,W*.5,H);
+    g.drawImage(canvas,0,0,canvas.width*.5,canvas.height,W*.5,0,W*.5,H);
+  }
+  const fromBody=placementContent(st);
+  const start=st.producto==='conjunto' ? .225 : st.producto==='campera' ? .25 : .16;
+  const y=H*(st.producto==='conjunto' ? .51 : st.producto==='campera' ? .38 : .32);
+  for(const [i,place,initials] of [[0,'manga-der',st.mangaDer],[1,'manga-izq',st.mangaIzq]]) {
+    const entries=fromBody.filter(([zone])=>zone===place);
+    if(initials) entries.push([place,'text',initials,'initials']);
+    if(!entries.length) continue;
+    const base=st.printAll?placementBase(st,y,H,st.colors.mangas):st.colors.mangas;
+    // The wrapped charts are mirrored on one arm. Restore reading direction
+    // for localized ink while leaving the fabric pattern in its own space.
+    const reverse = st.producto==='campera' ? i===0 : i===1;
+    const rightRaglan = st.producto==='campera' && i===0;
+    g.save();g.translate(W*(start+i*.5+(rightRaglan ? .023 : 0)),0);g.scale(reverse ? -1 : 1,1);
+    drawPlaced(g,entries,0,y,W*(rightRaglan ? .069 : .081),H*.12,st,base);
+    g.restore();
+  }
+}
 export function hoodCanvas(cv, st) {
   plainCanvas(cv, st, 'capucha', {pattern: st.printAll, seed: 13});
   const g = cv.context, W = cv.width, H = cv.height;
@@ -361,15 +544,11 @@ export function capCanvas(cv, st) {
   const g = cv.context, W = cv.width, H = cv.height;
   drawPattern(g, st.preset, st.colors.cuerpo, pcols(st), W, H, { seed: 41, k: W / 2048 * .7 });
   stitch(g, W / 1024, st.colors.cuerpo, () => line(g, 0, H * .936, W, H * .936));
-  const t = ink(st.preset === 'galactico' ? '#0a0f2a' : st.colors.cuerpo);
-  if (st.logoImg) drawLogo(g, st.logoImg, W * .5, H * .62, W * .39, H * .37);
-  if (st.espalda || st.nombre) {
-    g.fillStyle = t;
-    g.textAlign = 'center';
-    const caption = (st.espalda || st.nombre).toUpperCase();
-    fitText(g, caption, size => `${size}px Anton`, W * .51, H * (st.logoImg ? .11 : .25));
-    g.fillText(caption, W * .5, H * (st.logoImg ? .43 : .69));
-  }
+  const base=placementBase(st,H*.60,H,st.colors.cuerpo);
+  const text=[...new Set([st.nombre,st.espalda].filter(Boolean))];
+  if(st.logoImg)drawLogo(g,st.logoImg,W*.5,H*.61,W*.38,H*(text.length ? .26 : .37));
+  if(text[0])placedText(g,text[0],W*.5,H*(st.logoImg ? .405 : .60),W*.51,H*(st.logoImg ? .12 : .245),st,base);
+  if(text[1])placedText(g,text[1],W*.5,H*.775,W*.47,H*.10,st,base);
 }
 export function knitNormal(size = 256, kind = 'jersey') {
   const cv = document.createElement('canvas'); cv.width = cv.height = size; const g = cv.getContext('2d'); const img = g.createImageData(size, size);

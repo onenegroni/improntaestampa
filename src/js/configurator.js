@@ -483,7 +483,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   function drawInto(get, names) {
     const st = compatiblePrint(state), product = st.producto;
     if (names.includes('torso')) T.torsoCanvas(get('torso'), st, { vOf, product });
-    if (names.includes('sleeve')) T.plainCanvas(get('sleeve'), st, 'mangas', { pattern: st.printAll, seed: 9 });
+    if (names.includes('sleeve')) T.sleeveCanvas(get('sleeve'), st);
     if (names.includes('hood')) T.hoodCanvas(get('hood'), st);
     if (names.includes('short')) T.shortCanvas(get('short'), st, get('shortPlain'));
     if (names.includes('flag')) T.flagCanvas(get('flag'), st);
@@ -493,15 +493,21 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   function printSignature(name, st) {
     const accents = [st.preset, ...T.pcols(st)];
     const sidePrint = st.printAll ? accents : [];
-    const text = [st.nombre, st.numero, st.espalda, st.escuela, st.frase];
+    const text = [st.nombre,st.numero,st.espalda,st.escuela,st.frase,st.tipografia,st.arte,
+      st.nombreLugar,st.numeroLugar,st.espaldaLugar,st.logoLugar,st.arteLugar];
     switch (name) {
       case 'torso': return [st.producto, st.hideAutoMark, st.colors.cuerpo, ...accents, ...text];
-      case 'sleeve': return [st.colors.mangas, ...sidePrint];
+      case 'sleeve': {
+        const placements = [['nombreLugar','nombre'],['numeroLugar','numero'],['arteLugar','arte']]
+          .filter(([position])=>st[position]?.startsWith('manga')).flatMap(([position,value])=>[st[position],st[value]]);
+        const type = placements.length || st.mangaIzq || st.mangaDer ? st.tipografia : '';
+        return [st.producto,st.colors.mangas,...sidePrint,...placements,st.mangaIzq,st.mangaDer,type];
+      }
       case 'hood': return [st.colors.capucha, ...sidePrint];
       case 'short':
       case 'shortPlain': return [st.colors.short, ...accents, st.numero];
       case 'flag': return [st.colors.cuerpo, ...accents, st.espalda, st.escuela];
-      case 'cap': return [st.colors.cuerpo, ...accents, st.espalda, st.nombre];
+      case 'cap': return [st.colors.cuerpo, ...accents, st.espalda, st.nombre, st.tipografia];
       default: return [st.colors.mangas];
     }
   }
