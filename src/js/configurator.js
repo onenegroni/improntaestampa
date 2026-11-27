@@ -77,9 +77,9 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap; renderer.shadowMap.autoUpdate = false;
   canvasHost.appendChild(renderer.domElement);
   const scene = new THREE.Scene();
-  const cam = new THREE.PerspectiveCamera(26, 1, 0.05, 30);
+  const cam = new THREE.PerspectiveCamera(23, 1, 0.05, 30);
   const key = new THREE.DirectionalLight(0xffffff, 2.86);
-  key.position.set(-3.05, 3.3, 4.8);
+  key.position.set(-3.25, 3.8, 4.8);
   key.castShadow = true;
   const LIVE_SM = lowPower ? 512 : 1024;
   key.shadow.mapSize.set(LIVE_SM, LIVE_SM);
@@ -94,7 +94,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   const fill = new THREE.DirectionalLight(0xffffff, .43);
   fill.position.set(1.35, .72, 3.4);
   scene.add(fill);
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x969696, .23));
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x969696, .19));
 
   const spin = new THREE.Group(); scene.add(spin);
   const anim = new THREE.Group(); spin.add(anim);
@@ -332,9 +332,10 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   contactCanvas.width = contactCanvas.height = 128;
   const contactContext = contactCanvas.getContext('2d');
   const contactGradient = contactContext.createRadialGradient(64, 64, 0, 64, 64, 64);
-  contactGradient.addColorStop(0, 'rgba(33,33,33,.36)');
-  contactGradient.addColorStop(.41, 'rgba(38,38,38,.14)');
-  contactGradient.addColorStop(1, 'rgba(38,38,38,0)');
+  contactGradient.addColorStop(0, 'rgba(47,39,35,.32)');
+  contactGradient.addColorStop(.27, 'rgba(47,39,35,.22)');
+  contactGradient.addColorStop(.64, 'rgba(47,39,35,.055)');
+  contactGradient.addColorStop(1, 'rgba(47,39,35,0)');
   contactContext.fillStyle = contactGradient;
   contactContext.fillRect(0, 0, 128, 128);
   const contactTexture = new THREE.CanvasTexture(contactCanvas);
@@ -359,7 +360,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     key.shadow.bias = fitted ? -.00009 : -.00021;
     key.shadow.normalBias = fitted ? .0015 : .0044;
     fill.intensity = fleece ? .61 : fitted ? .48 : .56;
-    rim.intensity = fleece ? .56 : fitted ? .66 : .63;
+    rim.intensity = fleece ? .70 : fitted ? .75 : .70;
     // Only the current product keeps a resident atlas. In particular, a
     // sports kit's two numbered/plain shorts atlases leave memory on switch.
     for (const name of Object.keys(surfaces)) {
@@ -597,7 +598,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       pbox.getCenter(view.center);
       const tangent = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
       const freeHeight = Math.max(0.45, 1 - (fitMode.top + fitMode.bottom) / hostH);
-      const fill = state.producto === 'gorra' ? fitMode.fill * .82 : fitMode.fill;
+      const fill = state.producto === 'gorra' ? fitMode.fill * .87 : fitMode.fill;
       const heightDistance = dimensions.y / (fill * freeHeight * 2 * tangent);
       const widthDistance = Math.max(dimensions.x, dimensions.z) * 1.22 / (2 * tangent * cam.aspect);
       view.dist = Math.max(heightDistance, widthDistance) + dimensions.z * .32;
@@ -752,7 +753,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   const bgCv = document.createElement('canvas'); bgCv.width = 512; bgCv.height = 512; { const g = bgCv.getContext('2d'); const gr = g.createRadialGradient(235, 205, 10, 256, 256, 360); gr.addColorStop(0, '#fafafa'); gr.addColorStop(.55, '#eeeeee'); gr.addColorStop(1, '#dedede'); g.fillStyle = gr; g.fillRect(0, 0, 512, 512); }
   const bgTex = new THREE.CanvasTexture(bgCv); bgTex.colorSpace = THREE.SRGBColorSpace;
   const ANGLES = [['frente', 0], ['espalda', Math.PI], ['perfil', -Math.PI / 2], ['3-4', -0.6]];
-  async function renderSet({ w = isMobile ? 1080 : 1600, h = isMobile ? 1260 : 1866, angles = ANGLES, transparent = false, zoom = 1, pitch = 0.08, dist = 0, cy = null } = {}) {
+  async function renderSet({ w = isMobile ? 1080 : 1600, h = isMobile ? 1260 : 1866, angles = ANGLES, transparent = false, zoom = 1, pitch = 0.08, dist = 0, cy = null, thumbnail = false } = {}) {
     await ready;
     if (printFontsReady) await printFontsReady;
     if (tweening) rebuild(false);
@@ -783,7 +784,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       renderer.setSize(w, h, false);
       cam.aspect = w / h;
       cam.updateProjectionMatrix();
-      const shadowSize = isMobile || lowPower ? 2048 : 4096;
+      const shadowSize = thumbnail ? 1024 : isMobile || lowPower ? 2048 : 4096;
       key.shadow.mapSize.set(shadowSize, shadowSize);
       key.shadow.map?.dispose();
       key.shadow.map = null;

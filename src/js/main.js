@@ -3,6 +3,7 @@ import { createWheel, normHex } from './colorwheel.js';
 import { segments } from '../data/catalogue.json';
 import { PRODUCTS as P, MATERIALS, TECHNIQUES, LOCAL_DTF, CONSULT, optionsFor, compatiblePrint } from './product-data.js';
 import { ARTWORK, DESIGN_LIBRARY, PATTERNS, PERSONALIZATION, PLACEMENTS, TYPEFACES, availableTemplates, placementChoices } from './design-library.js';
+import { drawIllustration } from './illustrations.js';
 const CANONICAL_ORIGIN = 'https://improntaestampa.pages.dev/';
 const WA = '5492644127431';
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -26,6 +27,10 @@ const state = clone(DEFAULT);
 const cleanPersonalization = { nombre:'', numero:'', espalda:'', escuela:'', frase:'', mangaDer:'', mangaIzq:'',
   nombreLugar:'', numeroLugar:'', espaldaLugar:'', logoLugar:'', arteLugar:'', tipografia:'', arte:'', plantilla:'' };
 const openedDesign = location.hash.startsWith('#d=');
+if (!openedDesign) {
+  Object.assign(state, cleanPersonalization, { preset:'liso', tipografia:'moderna', cantidad:'' });
+  Object.assign(state.colors, { cuerpo:'#243855', mangas:'#243855', punos:'#233249', capucha:'#243855' });
+}
 if (openedDesign) {
   try {
     const data = JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(3).replace(/-/g, '+').replace(/_/g, '/')))));
@@ -59,7 +64,7 @@ let tt; function toast(msg) { const t = $('#toast'); t.textContent = msg; t.clas
 /* ---------- panel UI ---------- */
 const groups = $('#groups'), tabs = $('#mtabs');
 const STEPS = [
-  { id: 'modelo', label: 'Modelo', sections: ['inicio','producto','tela'] },
+  { id: 'modelo', label: 'Modelo', sections: ['producto','inicio','tela'] },
   { id: 'color', label: 'Color', sections: ['colores', 'estampa'] },
   { id: 'detalles', label: 'Detalles', sections: ['texto', 'logo'] },
   { id: 'pedido', label: 'Pedido', sections: ['talle'] },
@@ -100,13 +105,13 @@ function buildPanel() {
     groups.appendChild(step);
   });
 
-  $('#grp-inicio').innerHTML = `<h4>¿Cómo querés empezar?</h4><div class="design-start" role="group" aria-label="Punto de partida">
-    <button type="button" data-start="blank" aria-pressed="false"><b>Diseñá desde cero</b><span>Elegí tus colores, estampados y detalles para crear un diseño único.</span></button>
-    <button type="button" data-start="library" aria-pressed="false"><b>Elegí un diseño</b><span>Encontrá un estilo que te guste y personalizalo a tu manera.</span></button>
-    </div><div class="template-shelf" id="templateShelf" hidden><div class="field"><label for="templateCollection">Colección</label><select id="templateCollection"></select></div>
+  $('#grp-inicio').innerHTML = `<h4>Diseño base</h4><div class="design-start" role="group" aria-label="Punto de partida">
+    <button type="button" data-start="blank" aria-pressed="false">Desde cero</button>
+    <button type="button" data-start="library" aria-pressed="false">Diseños editables</button>
+    </div><div class="template-shelf" id="templateShelf" hidden>
     <div class="template-cards" id="templateCards" role="group" aria-label="Diseños editables"></div><p id="noTemplates" class="material-technique" hidden>Consultanos las opciones compatibles con esta tela o elegí otra tela para ver diseños.</p>
-    <div class="template-pair" id="templatePair" hidden><button type="button" class="studio-link" id="pairGarment"></button><button type="button" class="studio-link" id="pairCap">Diseñá la gorra a juego</button></div></div>`;
-  $('#grp-producto').innerHTML = '<h4>Elegí el producto</h4><div class="chips" role="group" aria-label="Producto"></div>';
+    <details class="template-pair" id="templatePair" hidden><summary>Prendas a juego</summary><div><button type="button" class="studio-link" id="pairGarment"></button><button type="button" class="studio-link" id="pairCap">Gorra</button></div></details></div>`;
+  $('#grp-producto').innerHTML = '<div class="product-controls"><h4>Producto</h4><div class="collection-control"><label for="templateCollection">Colección</label><select id="templateCollection"></select></div></div><div class="chips" role="group" aria-label="Producto"></div>';
   Object.entries(P).forEach(([key, {label}]) => {
     const icon = `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">${SHAPES[key]}</svg>`;
     $('#grp-producto .chips').appendChild(btn({ class: 'chip', 'data-v': key }, `${icon}<span>${label}</span>`));
@@ -127,7 +132,8 @@ function buildPanel() {
    <div id="pcols"><span class="pcl">Colores del estampado</span><div class="pchips">${PCOL.map((key, i) => `<button type="button" class="pc" data-i="${i}" aria-controls="slotPrint" aria-expanded="false"><i></i><span>Color ${i + 1}</span></button>`).join('')}</div></div>
    <div id="slotPrint"></div><label class="toggle"><input type="checkbox" id="printAll"> <span id="printAllText"></span></label>`;
   Object.entries(PATTERNS).forEach(([key,[label,style]]) => {
-    $('#grp-estampa .prints').appendChild(btn({ 'data-v': key }, `<i class="${style}"></i><span>${label}</span>`));
+    const swatch = style === 'p-mot' ? '<canvas width="140" height="60" aria-hidden="true"></canvas>' : `<i class="${style}"></i>`;
+    $('#grp-estampa .prints').appendChild(btn({ 'data-v': key }, `${swatch}<span>${label}</span>`));
   });
 
   $('#grp-texto').innerHTML = `<h4>Texto <button class="studio-link" id="clearText" type="button">Borrar textos</button></h4><p class="material-technique" id="detailNote" hidden>Consultanos qué personalización es compatible con esta tela.</p><div class="fields">
@@ -166,8 +172,8 @@ function selectStep(index, focus = false) {
     button.tabIndex = index === i ? 0 : -1;
   });
   $$('.studio-step', groups).forEach(panel => { panel.hidden = panel.id !== 'step-' + step.id; });
-  $('#stepInfo').textContent = `Paso ${index + 1} de ${STEPS.length}`;
-  $('#prevStep').disabled = index === 0;
+  $('#prevStep').hidden = index === 0;
+  $('#nextStep').textContent = ['Editar colores','Agregar detalles','Ver pedido'][index] || '';
   $('#nextStep').hidden = index === STEPS.length - 1;
   $('#waBtn').hidden = index !== STEPS.length - 1;
   groups.scrollTop = 0;
@@ -185,19 +191,19 @@ function setSelect(select, entries, value) {
 function syncTemplateShelf(settings) {
   const shown = startMode === 'library';
   $('#templateShelf').hidden = !shown;
-  $$('[data-start]',groups).forEach(button=>button.setAttribute('aria-pressed',button.dataset.start===startMode));
-  if (!shown) return;
+  $$('[data-start]',groups).forEach(button=>button.setAttribute('aria-pressed',button.dataset.start === (startMode || 'blank')));
   const collection = $('#templateCollection');
   const entries = settings.product.segments.map(segment=>[segment,segments[segment]]);
   setSelect(collection,entries,settings.segment);
-  collection.closest('.field').hidden = entries.length < 2;
+  collection.closest('.collection-control').hidden = entries.length < 2;
+  if (!shown) return;
   const templates = availableTemplates(state);
   const cards = $('#templateCards');
   const filter = `${state.producto}/${settings.segment}/${settings.technique}`;
   if (cards.dataset.filter !== filter) {
     cards.replaceChildren(...templates.map(template=>{
-      const alternate = template.id === 'tricolor' && state.producto === 'remera' ? '-remera' : '';
-      return btn({ 'data-template':template.id },`<img src="img/plantillas/${template.id}${alternate}.webp" alt="" width="264" height="256" loading="lazy" decoding="async"><span>${template.label}</span>`);
+      const variant = state.producto === template.photoModel ? '' : '-' + state.producto;
+      return btn({ 'data-template':template.id },`<img src="img/plantillas/${template.id}${variant}.webp" alt="" width="300" height="294" loading="lazy" decoding="async"><span>${template.label}</span>`);
     }));
     cards.dataset.filter = filter;
     cards.scrollLeft=0;
@@ -209,7 +215,7 @@ function syncTemplateShelf(settings) {
   const pair = selected?.products.includes('campera') && selected?.products.includes('remera') && settings.segment!=='empresas';
   const next = state.producto==='campera'?'remera':'campera';
   $('#templatePair').hidden = !pair;
-  $('#pairGarment').textContent = `Diseñá la ${next} a juego`;
+  $('#pairGarment').textContent = P[next].label;
   $('#pairGarment').dataset.pair = next;
   $('#pairCap').hidden = !selected || !['tricolor','varsity','argentina'].includes(selected.id);
 }
@@ -246,8 +252,9 @@ function sync() {
     button.setAttribute('aria-pressed', button.dataset.v === state.tela);
   });
   $('#grp-tela .fab').classList.toggle('single', materials.length === 1);
-  $('#fixedFabric').textContent = pr.fixed || '';
-  $('#fixedFabric').hidden = !pr.fixed;
+  $('#fixedFabric').textContent = pr.fixed || (materials.length === 1 ? material.label : '');
+  $('#fixedFabric').hidden = !$('#fixedFabric').textContent;
+  $('#grp-tela .fab').hidden = materials.length < 2;
   const method = TECHNIQUES[technique];
   $('#materialTechnique').textContent = `${method.label} · ${method.description}`;
   syncTemplateShelf(settings);
@@ -282,9 +289,22 @@ function sync() {
     button.setAttribute('aria-expanded', active?.kind === 'print' && active.i === i);
   });
   $$('#grp-estampa .prints button').forEach(button => {
-    const illustrated = PATTERNS[button.dataset.v][1] === 'p-mot';
+    const canvas = button.querySelector('canvas');
+    const illustrated = Boolean(canvas);
     button.hidden = illustrated && button.dataset.v !== state.preset && !['inicial','primaria'].includes(segment);
     button.setAttribute('aria-pressed', button.dataset.v === state.preset);
+    if (illustrated) {
+      const {cuerpo,acento,acento2,acento3}=state.colors;
+      const key=[cuerpo,acento,acento2,acento3].join('');
+      if (button.hidden || canvas.dataset.palette === key) return;
+      canvas.dataset.palette=key;
+      const g=canvas.getContext('2d');
+      g.fillStyle=cuerpo;g.fillRect(0,0,140,60);
+      const n=Number.parseInt(acento3.slice(1),16);
+      const brightness=((n>>16)*299+((n>>8)&255)*587+(n&255)*114)/1000;
+      drawIllustration(g,button.dataset.v,70,30,59,{ink:brightness>130?'#242228':'#fff5e6',a:acento,b:acento2,c:acento3});
+      return;
+    }
     const swatch = button.querySelector('i').style;
     swatch.setProperty('--b', state.colors.cuerpo);
     swatch.setProperty('--a', state.colors.acento);
@@ -384,7 +404,7 @@ function wire() {
     if (button.dataset.start) {
       startMode=button.dataset.start;
       if (startMode==='blank') {
-        Object.assign(state,cleanPersonalization,{preset:'liso',printAll:false});
+        Object.assign(state,cleanPersonalization,{preset:'liso',printAll:false,tipografia:'moderna'});
         clearUploadedLogo(false);
         api?.repaint();
       }
@@ -588,17 +608,16 @@ function openWheel(selection, slot, title) {
     groups.scrollBy({ top: Math.min(offset, Math.max(0, bounds.top - container.top - 8)), behavior: 'smooth' });
   });
 }
-function setProduct(product, segment, size) {
-  if (!P[product] || (product === state.producto && !segment && !size)) return;
+function setProduct(product, segment) {
+  if (!P[product] || (product === state.producto && !segment)) return;
   closeWheel();
-  if (state.frase === P[state.producto].frase) state.frase = P[product].frase;
+  if (state.frase && state.frase === P[state.producto].frase) state.frase = P[product].frase;
   state.producto = product;
   if (segment === 'empresas' && state.segmento !== segment) {
     Object.assign(state, cleanPersonalization, {preset:'liso', printAll:false});
   }
   if (segment && segments[segment]) state.segmento = segment;
   if (segment === 'empresas' && product === 'remera') state.tela = 'algodon';
-  if (size && sizeList().includes(size)) state.talle = size;
   sync();
   api?.rebuild(true);
 }
@@ -832,7 +851,7 @@ function setFilter(filter) {
   let visible = 0;
   $$('#filters button').forEach(button => button.setAttribute('aria-pressed', button.dataset.f === filter));
   for (const card of cards) {
-    const show = filter === 'all' || card.dataset.cat === filter ||
+    const show = (filter === 'all' && card.dataset.cat !== '3d') || card.dataset.cat === filter ||
       (filter === 'egresados' && ['inicial','primaria','secundaria'].includes(card.dataset.cat));
     card.classList.toggle('hide', !show);
     if (show) {
@@ -843,11 +862,12 @@ function setFilter(filter) {
   $('#gcount').textContent = `Mostrando ${visible} de ${cards.length}`;
 }
 $('#filters').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setFilter(b.dataset.f); });
-$$('[data-product]').forEach(a => a.addEventListener('click', () => {
-  setProduct(a.dataset.product, a.dataset.segment, a.dataset.size);
-  selectStep(0);
-  load3D();
-}));
+$('#productos').addEventListener('click', event => {
+  const trigger = event.target.closest('[data-catalogue-photo]');
+  if (!trigger) return;
+  const original = $('#grid [data-owner-photo="' + trigger.dataset.cataloguePhoto + '"] button');
+  openLb([{src:original.dataset.lb,name:original.closest('.card').querySelector('figcaption b').textContent}],0,trigger);
+});
 
 /* ---------- nav, menu, reveal, parallax ---------- */
 const nav = $('#nav'), fab = $('#fabWa'), heroEl = $('#hero'); const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -965,7 +985,7 @@ function applyFit() {
   api.setFit({
     top: Math.max(0, header.bottom - viewer.top) + 6,
     bottom: Math.max(0, viewer.bottom - controls.top) + 8,
-    fill: 0.93,
+    fill: 1.03,
     touch: document.body.classList.contains('dz'),
   });
 }

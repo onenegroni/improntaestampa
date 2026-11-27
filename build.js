@@ -9,17 +9,15 @@ const photoPath = (id, preview = false) => `img/trabajos/${id}${preview ? '-680'
 const arrow = '<span aria-hidden="true">›</span>';
 function retailCard(card, nested = false) {
   const photo = card.photo && catalogue.photos.find(([id]) => id === card.photo);
-  const image = photo ? `<img class="pimg" src="${photoPath(photo[0],true)}" width="${photo[4]}" height="${photo[5]}" alt="${escapeHtml(photo[3])}" loading="lazy" decoding="async">`
-    : card.image ? `<img class="pimg" src="img/${card.image}" width="840" height="840" alt="${escapeHtml(card.alt)}" loading="lazy" decoding="async">` : '';
+  const img = (src, width, height, alt) => `<img class="pimg" src="${src}" width="${width}" height="${height}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async">`;
+  const image = photo ? `<button class="catalogue-media" type="button" data-catalogue-photo="${photo[0]}" aria-label="Ampliar foto de ${escapeHtml(card.title)}">${img(photoPath(photo[0],true),photo[4],photo[5],photo[3])}</button>`
+    : card.image ? `<div class="catalogue-media">${img('img/'+card.image,840,840,card.alt)}</div>` : '';
   const enquiry = card.enquiry ? `<a class="more" href="https://wa.me/5492644127431?text=${encodeURIComponent(card.enquiry[1])}" target="_blank" rel="noopener">${escapeHtml(card.enquiry[0])} ${arrow}</a>` : '';
-  const links = (card.links || []).map(([product,label,size]) => `<a class="more" href="#configurador" data-product="${product}" data-segment="${card.id}"${size ? ` data-size="${escapeHtml(size)}"` : ''}>${escapeHtml(label)} ${arrow}</a>`).join('');
   const heading = nested ? 'h4' : 'h3';
-  return `<article class="pitem${image ? '' : ' catalogue-text'}" id="catalogo-${card.id}">${image}<div class="catalogue-copy">${card.note ? `<p class="catalogue-kicker">${escapeHtml(card.note)}</p>` : ''}<${heading}>${escapeHtml(card.title)}</${heading}><p>${escapeHtml(card.copy)}</p><div class="catalogue-links">${links}${enquiry}</div></div></article>`;
+  return `<article class="pitem${image ? '' : ' catalogue-text'}" id="catalogo-${card.id}">${image}<div class="catalogue-copy"><${heading}>${escapeHtml(card.title)}</${heading}><p>${escapeHtml(card.copy)}</p>${enquiry}</div></article>`;
 }
 function renderCatalogue() {
-  const categories = catalogue.categories.map(card => `<a href="#catalogo-${card.id}">${escapeHtml(catalogue.segments[card.id])}</a>`).join('');
-  return `<div class="wrap"><nav class="catalogue-nav" aria-label="Categorías del catálogo"><a href="#catalogo-egresados">Egresados</a>${categories}</nav></div>
-  <section class="catalogue-graduation" id="catalogo-egresados" aria-labelledby="egresados-title"><div class="wrap catalogue-intro"><h3 id="egresados-title">Egresados</h3><p>Elegí el nivel y encontrá ideas para tu promoción.</p></div><div class="wrap product-gallery"><div class="product-list">${catalogue.graduation.map(card=>retailCard(card,true)).join('')}</div></div></section>
+  return `<section class="catalogue-graduation" id="catalogo-egresados" aria-labelledby="egresados-title"><div class="wrap catalogue-intro"><h3 id="egresados-title">Egresados</h3></div><div class="wrap product-gallery"><div class="product-list">${catalogue.graduation.map(card=>retailCard(card,true)).join('')}</div></div></section>
   <div class="wrap product-gallery catalogue-services"><div class="product-list">${catalogue.categories.map(card=>retailCard(card)).join('')}</div></div>`;
 }
 function renderOwnerPhotos() {

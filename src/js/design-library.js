@@ -56,14 +56,14 @@ const bordeaux = ['#222135','#8c2250','#f7eee5','#222135','#8c2250'];
 const paletteCloud = ['#e1edf7','#3876b4','#f6bd60','#18325a'];
 const business = [ALL_OVER,LOCAL_DTF];
 export const DESIGN_LIBRARY = [
-  design('inicial','dino','Dinosaurios','dinosaurios',['#e1f0d9','#307c65','#ffca71','#1c5549']),
-  design('inicial','espacio','Planetitas y espacio','planetitas',['#27204c','#f8b762','#7ad6e9','#c685ef']),
-  design('inicial','estrellitas','Estrellitas','estrellas',paletteCloud),
+  design('inicial','dino','Dinosaurios','dinosaurios',['#e5e8ce','#528273','#f6cf76','#d8dbab'],{sleeveBands:false}),
+  design('inicial','espacio','Planetitas y espacio','planetitas',['#202747','#db795c','#f7d6a0','#7180b9'],{sleeveBands:false}),
+  design('inicial','estrellitas','Estrellitas','estrellas',['#244268','#699db4','#efe0ac','#9cb7c7'],{sleeveBands:false}),
   design('inicial','manitos','Manitos','manitos',['#58b8ec','#e8432a','#f2c230','#7a3fb4'],{photoModel:'campera'}),
-  design('inicial','heroes','Superhéroes originales','heroes',['#133466','#fb745c','#ffd577','#fff2df']),
-  design('inicial','monstruitos','Doodles y monstruitos','doodles',['#cfe7de','#285762','#ff9f77','#7cbdac']),
-  design('inicial','arcoiris','Arcoíris','arcoiris',['#f5e0d7','#af4f79','#f3a956','#479c92']),
-  design('inicial','primer-grado','Egresaditos ilustrados','egresaditos',paletteCloud,{lowerText:'PRIMER GRADO'}),
+  design('inicial','heroes','Superhéroes originales','heroes',['#1a324c','#db5e49','#ffe1a7','#8eb0c0','#243e59','#192b3a'],{sleeveBands:false, type:'moderna'}),
+  design('inicial','monstruitos','Doodles y monstruitos','doodles',['#d5e4d8','#719e84','#eda879','#efdbac'],{sleeveBands:false}),
+  design('inicial','arcoiris','Arcoíris','arcoiris',['#f3e0d6','#be6a73','#f0c781','#d6b6bb'],{sleeveBands:false}),
+  design('inicial','primer-grado','Egresaditos ilustrados','egresaditos',paletteCloud,{lowerText:'PRIMER GRADO',sleeveBands:false}),
 
   design('primaria','tricolor','Tricolor','tricolor',coral,{photoModel:'campera', motif:'laureles',type:'varsity'}),
   design('primaria','galactico','Galáctico','galactico',['#11122c','#71c5f0','#8c63e5','#3142bd'],{photoModel:'campera'}),
@@ -74,7 +74,7 @@ export const DESIGN_LIBRARY = [
   design('primaria','tie-dye','Tie-dye','tiedye',['#3275df','#f06845','#f4be49','#754bc0']),
   design('primaria','camuflaje','Camuflaje','camuflaje',['#2d3744','#739b9c','#c8d5c9','#263247']),
   design('primaria','rayas','Rayas','rayas',blue),
-  design('primaria','doodles','Doodles','doodles',['#b6e5ee','#1a4680','#f1c76b','#2688a5']),
+  design('primaria','doodles','Doodles','doodles',['#bbe1e8','#628da8','#e8bb67','#a5c7cf'],{sleeveBands:false}),
 
   design('secundaria','college','College','liso',['#243855','#a23e57','#e9d6ad','#f5eee3'],{motif:'laureles',type:'college'}),
   design('secundaria','varsity','Varsity','tricolor',bordeaux,{motif:'corona',type:'varsity'}),

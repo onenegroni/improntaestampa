@@ -9,15 +9,58 @@
     "accesorios": "Accesorios"
   },
   "graduation": [
-    {"id":"inicial","title":"Nivel inicial","note":"Egresaditos","photo":"egresaditos-celeste","copy":"Remeras, camperas con capucha y conjuntos para jardín. Manitos, estrellitas, dinosaurios y otros dibujos para festejar el primer gran paso.","links":[["remera","Diseñá la remera"],["campera","Diseñá la campera"]]},
-    {"id":"primaria","title":"Primaria","note":"Egresados","photo":"tricolor-coral","copy":"Remeras, camperas y conjuntos con franjas tricolor, degradés o gráficas galácticas. Sumá nombres, iniciales y los detalles de la promo.","links":[["campera","Diseñá la campera"],["remera","Diseñá la remera"]]},
-    {"id":"secundaria","title":"Secundaria","note":"Egresados","photo":"varsity-bordo","copy":"Estilos college, composiciones minimalistas y combinaciones de color para darle una identidad propia a tu promo.","links":[["remera","Diseñá la remera"],["campera","Diseñá la campera"]]}
+    {
+      "id": "inicial",
+      "title": "Nivel inicial",
+      "photo": "egresaditos-celeste",
+      "copy": "Remeras, camperas y conjuntos con ilustraciones para egresaditos."
+    },
+    {
+      "id": "primaria",
+      "title": "Primaria",
+      "photo": "tricolor-coral",
+      "copy": "Tricolores, degradés y gráficas galácticas para tu promo."
+    },
+    {
+      "id": "secundaria",
+      "title": "Secundaria",
+      "photo": "varsity-bordo",
+      "copy": "Identidad de promo, desde el estilo varsity hasta diseños minimalistas."
+    }
   ],
   "categories": [
-    {"id":"uniformes","title":"Uniformes escolares","copy":"Chombas escolares y remeras de educación física. ¿Necesitás uniformes para tu colegio? Consultanos.","enquiry":["Consultá por uniformes","Hola Impronta, quiero consultar por chombas o remeras de educación física para mi colegio."]},
-    {"id":"deportivos","title":"Indumentaria deportiva","photo":"deportivo-estrella","copy":"Camisetas, remeras, shorts, musculosas y conjuntos para fútbol, hockey, zumba, gimnasios y otros deportes. Consultá por prendas individuales o conjuntos coordinados.","links":[["conjunto","Diseñá el conjunto"],["remera","Diseñá la remera"],["short","Diseñá el short"],["musculosa","Diseñá la musculosa"]]},
-    {"id":"empresas","title":"Tu marca, en cada prenda","image":"catalog-empresas.webp","alt":"Remera grafito con una marca aplicada en el pecho","copy":"Remeras promocionales y publicitarias, camperas y prendas para comercios, emprendimientos y acciones promocionales. Personalizalas con tu logo, tus colores y tus gráficas.","links":[["remera","Diseñá la remera"],["campera","Diseñá la campera"]]},
-    {"id":"accesorios","title":"Accesorios y regalos","photo":"gorras-cinco-gajos","copy":"Gorras de cinco gajos para chicos y adultos. Consultá por colores, disponibilidad, tazas personalizadas y opciones de regalos empresariales.","links":[["gorra","Diseñá la gorra infantil","Infantil ajustable"],["gorra","Diseñá la gorra de adulto","Adulto ajustable"],["bandera","Diseñá la bandera"]],"enquiry":["Consultá por tazas y regalos","Hola Impronta, quiero consultar por tazas personalizadas o regalos empresariales."]}
+    {
+      "id": "deportivos",
+      "title": "Indumentaria deportiva",
+      "photo": "deportivo-estrella",
+      "copy": "Remeras, musculosas, shorts y conjuntos para equipos y actividades deportivas."
+    },
+    {
+      "id": "empresas",
+      "title": "Empresas y promos",
+      "image": "catalog-empresas.webp",
+      "alt": "Remera grafito con una marca aplicada en el pecho",
+      "copy": "Remeras y camperas con tu logo, los colores y la identidad de tu marca."
+    },
+    {
+      "id": "accesorios",
+      "title": "Accesorios y regalos",
+      "photo": "gorras-cinco-gajos",
+      "copy": "Gorras de cinco gajos para chicos y adultos. Tonos sujetos a disponibilidad.",
+      "enquiry": [
+        "Consultá por tazas y regalos",
+        "Hola Impronta, quiero consultar por tazas personalizadas o regalos empresariales."
+      ]
+    },
+    {
+      "id": "uniformes",
+      "title": "Uniformes escolares",
+      "copy": "Chombas y remeras de educación física.",
+      "enquiry": [
+        "Consultá por uniformes",
+        "Hola Impronta, quiero consultar por chombas o remeras de educación física para mi colegio."
+      ]
+    }
   ],
   "photos": [
     ["tricolor-coral","primaria","Tricolor coral, azul y negro","Camperas raglán y remeras con tres franjas horizontales",1280,736],

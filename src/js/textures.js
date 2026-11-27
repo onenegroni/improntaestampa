@@ -1,5 +1,6 @@
 // Canvas textures: print presets, text, logo, knit normal map.
 import * as THREE from './vendor/three.module.min.js';
+import { drawIllustration, illustrations } from './illustrations.js';
 
 export function lum(hex) { const c = new THREE.Color(hex); return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b; }
 export const ink = hex => (lum(hex) > 0.205 ? '#141414' : '#fafafa');
@@ -12,7 +13,6 @@ export const pcols = st => [st.colors.acento, st.colors.acento2 || '#f4f1ec', st
 function blobPath(g, R, x, y, r, n = 9) { const pts = []; for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2, rr = r * (0.55 + R() * 0.75); pts.push([x + Math.cos(a) * rr * 1.5, y + Math.sin(a) * rr * 0.8]); }
   g.beginPath(); for (let i = 0; i <= n; i++) { const p0 = pts[i % n], p1 = pts[(i + 1) % n]; const mx = (p0[0] + p1[0]) / 2, my = (p0[1] + p1[1]) / 2; i ? g.quadraticCurveTo(p0[0], p0[1], mx, my) : g.moveTo(mx, my); } g.closePath(); }
 
-function hueShift(hex, deg) { const c = new THREE.Color(hex); const hsl = {}; c.getHSL(hsl); c.setHSL(((hsl.h + deg / 360) % 1 + 1) % 1, hsl.s, hsl.l); return '#' + c.getHexString(); }
 function rgbOf(hex) {
   const c = new THREE.Color(hex).convertLinearToSRGB();
   return [c.r * 255, c.g * 255, c.b * 255];
@@ -96,14 +96,6 @@ function tieDye(g, w, h, cols, centres, R) {
   g.putImageData(img, 0, 0);
 }
 
-function smiley(g, x, y, r, col) {
-  g.save(); g.translate(x, y);
-  g.fillStyle = col; g.beginPath(); g.arc(0, 0, r, 0, 7); g.fill();
-  g.lineWidth = r * 0.09; g.strokeStyle = 'rgba(20,20,20,.85)'; g.stroke();
-  g.fillStyle = 'rgba(20,20,20,.9)'; [-1, 1].forEach(s => { g.beginPath(); g.ellipse(s * r * 0.33, -r * 0.22, r * 0.1, r * 0.2, 0, 0, 7); g.fill(); });
-  g.lineWidth = r * 0.1; g.lineCap = 'round'; g.beginPath(); g.arc(0, r * 0.02, r * 0.55, 0.18 * Math.PI, 0.82 * Math.PI); g.stroke();
-  g.restore();
-}
 // An irregular palm stamp. Pores lighten the ink without removing the cloth underneath.
 let palm;
 function hand(g, R, x, y, scale, rotation, color) {
@@ -136,10 +128,6 @@ function hand(g, R, x, y, scale, rotation, color) {
 }
 
 const motifPaths = {
-  dinosaurios: 'M-.87 .19Q-.58 .3-.44-.16Q-.32-.38-.1-.31L.33-.27Q.3-.6.54-.61Q.85-.65.88-.27L.66-.08 .55-.14 .42 .27 .46 .59 .23 .59 .12 .34-.2 .35-.23 .59-.44 .59-.43 .31Q-.66 .42-.87 .19Z',
-  heroes: 'M0-.72Q.43-.49.73-.47L.65 .2Q.51 .54 0 .74Q-.51 .54-.65 .2L-.73-.47Q-.4-.49 0-.72Z',
-  doodles: 'M-.69 .24Q-.82-.12-.62-.44L-.7-.77Q-.37-.78-.25-.56Q.04-.66.27-.52L.56-.71 .55-.39Q.82-.34.78 .06Q.8 .7 .2 .73L-.35 .65Q-.59 .65-.69 .24Z',
-  egresaditos: 'M-.78-.13 0-.57 .78-.13 0 .31Z M-.42 .19 0 .45 .42 .19 .42 .48Q0 .79-.42 .48Z',
   corona: 'M-.8-.38-.39-.08 0-.57 .39-.08 .8-.38 .63 .48-.63 .48Z',
   escudo: 'M0-.78 .65-.42 .58 .38 0 .76-.58 .38-.65-.42Z',
 };
@@ -159,9 +147,6 @@ function drawMotif(g, kind, x, y, size, color, accent) {
     const path = motifCache[kind] ||= new Path2D(motifPaths[kind]);
     g.fill(path);
     g.fillStyle=accent;
-    if (kind === 'heroes') g.fill(new Path2D('M.11-.52-.38.08-.02.06-.17.55.43-.1.06-.04Z'));
-    if (kind === 'dinosaurios') circle(g,.61,-.46,.053);
-    if (kind === 'doodles') {circle(g,-.24,-.12,.11);circle(g,.23,-.1,.17);circle(g,.05,.30,.10);}
     if (kind === 'escudo') star(g,.41,5);
   } else if (kind === 'estrellas') {
     star(g,.75,5);
@@ -206,60 +191,67 @@ export function drawPattern(g, preset, base, accentIn, w, h, { seed = 3, k = 1, 
       g.fillStyle=accent;g.fillRect(x,-h*2,spacing*.32,h*4);
       g.fillStyle=ac2;g.fillRect(x+spacing*.35,-h*2,spacing*.033,h*4);
     }
-  } else if (['dinosaurios','planetitas','estrellas','heroes','doodles','arcoiris','egresaditos'].includes(preset)) {
-    const cell=Math.max(52,155*k);
-    const colours=[accent,ac2,ac3];
-    for(let row=0;row<Math.ceil(h/cell);row++){
-      for(let col=-1;col<=Math.ceil(w/cell);col++){
-        const x=(col+.45+(row%2)*.45+R()*.22)*cell,y=(row+.35+R()*.30)*cell;
-        const colour=colours[Math.floor(R()*colours.length)];
-        g.globalAlpha=region==='body' && y<h*.55 ? .26 : .89;
-        drawMotif(g,preset,x,y,cell*(.24+R()*.15),colour,base);
-        g.fillStyle=colour;circle(g,x+cell*.43,y-cell*.23,cell*.028);
-      }
+  } else if (Object.prototype.hasOwnProperty.call(illustrations,preset)) {
+    // Keep the chest clear. A quiet hem treatment carries the palette around the garment.
+    const fade=g.createLinearGradient(0,h*.62,0,h);
+    fade.addColorStop(0,base);
+    fade.addColorStop(1,mix(base,ac3,.34));
+    g.fillStyle=fade;g.fillRect(0,h*.62,w,h*.38);
+    for(let i=0;i<Math.round(w/(104*k));i++){
+      const x=(i+.20+R()*.57)*104*k,y=h*(.78+R()*.21);
+      g.globalAlpha=.37+R()*.24;
+      drawMotif(g,'estrellas',x,y,(3+R()*10)*k,i%3===0 ? accent : ac2,base);
     }
   } else if (preset === 'galactico') {
-    g.fillStyle = mix('#070b22', base, 0.15); g.fillRect(0, 0, w, h);
-    const cols = [ac3, mix(ac3, '#ffffff', 0.18), ac2, mix(ac2, '#ff4fd8', 0.15), accent];
-    for (let i = 0; i < 70; i++) {
-      const x = R() * w, y = R() * h, r = (60 + R() * 260) * k;
-      const gr = g.createRadialGradient(x, y, 0, x, y, r); const c = cols[(R() * cols.length) | 0];
-      gr.addColorStop(0, c + 'aa'); gr.addColorStop(1, c + '00'); g.fillStyle = gr; g.fillRect(x - r, y - r, 2 * r, 2 * r);
+    const space=mix('#090d22',base,.47);
+    g.fillStyle=space;g.fillRect(0,0,w,h);
+    for(let i=0;i<Math.max(3,Math.round(w/(200*k)));i++){
+      const x=(i+.5)*200*k,y=h*(.67+Math.sin(i*.73)*.15),r=(130+R()*120)*k;
+      const glow=g.createRadialGradient(x,y,0,x,y,r);
+      glow.addColorStop(0,[ac2,ac3,accent][i%3]+'a0');
+      glow.addColorStop(1,space+'00');
+      g.fillStyle=glow;g.fillRect(x-r,y-r,r*2,r*2);
     }
-    for (let i = 0; i < 1400 * k * (w * h) / (2048 * 1024); i++) {
-      const x = R() * w, y = R() * h, r = R() * R() * 2.6 * k + 0.4;
-      g.fillStyle = `rgba(255,255,255,${0.35 + R() * 0.65})`; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+    for(let i=0;i<Math.round(w/(5*k));i++){
+      const x=R()*w,y=R()*h;
+      g.fillStyle=i%7===0?accent:'#eee9fd';g.globalAlpha=R()*.64+.12;
+      if(i%25===0) drawMotif(g,'estrellas',x,y,(4+R()*4)*k,accent,base);
+      else circle(g,x,y,(.7+R()*R()*2.5)*k);
     }
-    for (let i = 0; i < 18; i++) { const x = R() * w, y = R() * h, r = 8 * k + R() * 10 * k; const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, '#ffffffee'); gr.addColorStop(1, '#ffffff00'); g.fillStyle = gr; g.fillRect(x - r, y - r, 2 * r, 2 * r); }
   } else if (preset === 'splash') {
-    const band = region === 'body' ? 0.36 : 0.0;
-    // hem band
-    if (region === 'body') { g.fillStyle = accent; g.fillRect(0, h * 0.885, w, h * 0.115); g.fillStyle = ac3; g.fillRect(0, h * 0.885, w, h * 0.012); }
-    const y0 = h * (1 - band - 0.12);
-    for (let i = 0; i < 46 * (w / 2048); i++) {
-      const y = y0 + R() * (h - y0), len = (80 + R() * 420) * k, x = R() * w;
-      g.save(); g.translate(x, y); g.rotate(-0.33); g.fillStyle = i % 7 === 0 ? ac2 : i % 5 === 0 ? ac3 : accent; g.globalAlpha = 0.92;
-      g.beginPath(); g.ellipse(0, 0, len / 2, (3 + R() * 9) * k, 0, 0, 7); g.fill(); g.restore();
+    const start=region==='body'?.63:.35;
+    const band=g.createLinearGradient(0,h*start,w*.13,h);
+    band.addColorStop(0,base);band.addColorStop(1,mix(base,ac3,.58));
+    g.fillStyle=band;g.fillRect(0,h*start,w,h*(1-start)+1);
+    const tones=[accent,ac3,accent,mix(ac2,base,.35)];
+    for(let i=0;i<Math.max(12,Math.round(w/(65*k)));i++){
+      const x=R()*w,y=h*(start+(1-start)*(R()*.93)),length=(70+R()*240)*k,stroke=(2+R()*13)*k;
+      g.save();g.translate(x,y);g.rotate(-.31+(R()-.5)*.10);
+      g.fillStyle=tones[i%tones.length];g.globalAlpha=.56+R()*.41;
+      g.beginPath();
+      g.moveTo(-length*.69,-stroke*.42);
+      g.quadraticCurveTo(-length*.2,-stroke*1.05,length*.60,-stroke*.30);
+      g.lineTo(length*.38,stroke*.06);
+      g.quadraticCurveTo(length*.91,stroke*.14,length*.75,stroke*.38);
+      g.quadraticCurveTo(-length*.22,stroke*.65,-length*.69,-stroke*.42);
+      g.fill();g.restore();
+      if(i%2===0){g.fillStyle=tones[(i+1)%tones.length];circle(g,x-length*.47,y+stroke*.80,(1.6+R()*2.6)*k);}
     }
-    for (let i = 0; i < 300 * (w / 2048); i++) {
-      const x = R() * w, y = y0 - 80 * k + R() * (h - y0 + 80 * k); { const q = R(); g.fillStyle = q < 0.22 ? ac2 : q < 0.34 ? ac3 : accent; }
-      g.beginPath(); g.arc(x, y, (1.5 + R() * R() * 14) * k, 0, 7); g.fill();
-    }
-    if (region !== 'body') { for (let i = 0; i < 60; i++) { const x = R() * w, y = R() * h; g.fillStyle = accent; g.beginPath(); g.arc(x, y, (1 + R() * 6) * k, 0, 7); g.fill(); } }
   } else if (preset === 'degrade') {
     const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, base); gr.addColorStop(0.38, base); gr.addColorStop(0.86, accent); gr.addColorStop(1, ac3);
     g.fillStyle = gr; g.fillRect(0, 0, w, h);
-    // halftone transition
-    for (let y = h * 0.3; y < h * 0.75; y += 14 * k) for (let x = 0; x < w; x += 14 * k) {
-      const t = (y - h * 0.3) / (h * 0.45); g.fillStyle = ac2; g.globalAlpha = 0.9; g.beginPath(); g.arc(x + ((y / (14 * k)) % 2) * 7 * k, y, t * 5.5 * k, 0, 7); g.fill();
+    const spacing=19*k;
+    for(let row=0;row<Math.ceil(h*.32/spacing);row++) for(let x=0;x<w;x+=spacing){
+      const y=h*.52+row*spacing;
+      g.globalAlpha=.10+.26*Math.sin(row*spacing/(h*.32)*Math.PI);
+      g.fillStyle=ac2;circle(g,x+row%2*spacing*.5,y,Math.min(2.7*k,row*.35*k));
     }
-    g.globalAlpha = 1;
   } else if (preset === 'rayas') {
-    const sw = 64 * k, gap = 150 * k;
-    for (let x = -sw; x < w + gap; x += sw + gap) {
-      g.fillStyle = accent; g.fillRect(x, 0, sw, h);
-      g.fillStyle = ac2; g.fillRect(x + sw * 0.42, 0, sw * 0.16, h);
-      g.fillStyle = ac3; g.fillRect(x + sw + gap * 0.5 - sw * 0.06, 0, sw * 0.12, h);
+    const spacing=256*k,stripe=106*k;
+    for(let x=0;x<w;x+=spacing){
+      g.fillStyle=accent;g.fillRect(x+75*k,0,stripe,h);
+      g.fillStyle=ac2;g.fillRect(x+75*k,0,4*k,h);
+      g.fillStyle=ac3;g.fillRect(x+178*k,0,3*k,h);
     }
   } else if (preset === 'camuflaje') {
     // organic camouflage, three ink layers over the garment colour
@@ -268,22 +260,30 @@ export function drawPattern(g, preset, base, accentIn, w, h, { seed = 3, k = 1, 
   } else if (preset === 'tiedye') {
     const centres = region === 'body' ? [[0.25, 0.5], [0.75, 0.5]] : [[0.3 + R() * 0.4, 0.5]];
     tieDye(g, w, h, [accent, ac2, base, ac3], centres, R);
-    if (region === 'body') { // a few happy faces near the hem, away from the lettering
-      const sm = [[0.1, 0.62, 46], [0.33, 0.8, 58], [0.17, 0.87, 34], [0.4, 0.58, 30], [0.62, 0.88, 40], [0.9, 0.84, 50], [0.56, 0.6, 28]];
-      sm.forEach(([u, v, r], i) => smiley(g, u * w, v * h, r * k * 1.6, [ac2, ac3, accent, mix(ac2, '#ffffff', 0.2)][i % 4]));
-    }
+
   } else if (preset === 'manitos') {
     const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, base); gr.addColorStop(0.55, mix(base, ac3, 0.35)); gr.addColorStop(1, ac3); g.fillStyle = gr; g.fillRect(0, 0, w, h);
-    const pal = [accent, ac2, hueShift(accent, 120), hueShift(accent, 28), hueShift(accent, 220), hueShift(accent, -28), hueShift(accent, 270)];
-    const n = Math.round(58 * (w * h) / (2048 * 1024) / Math.max(0.25, k * k)) + 8;
-    for (let i = 0; i < n; i++) hand(g, R, R() * w, R() * h, (74 + R() * 26) * k, (R() - 0.5) * 2.2, pal[i % pal.length]);
+    const palette=[accent,ac2,mix(ac2,accent,.65),mix(ac2,'#51948d',.63),mix(base,ac3,.33)];
+    const count=region==='body'?24:10;
+    for(let i=0;i<count;i++){
+      const x=R()*w, y=h*(region==='body'?.59+R()*.40:R());
+      hand(g,R,x,y,(55+R()*33)*k,(R()-.5)*1.9,palette[i%palette.length]);
+    }
   } else if (preset === 'geometrico') {
-    // low-poly mosaic: triangles that shift from the garment colour (top) into the print colours (bottom)
-    const s = 120 * k, cols = [accent, ac2, ac3]; const rows = Math.ceil(h / s) + 1, colsN = Math.ceil(w / s) + 2;
-    const jit = []; for (let j = 0; j <= rows; j++) { jit.push([]); for (let i = 0; i <= colsN; i++) jit[j].push([(i - 0.5 + (j % 2) * 0.5) * s + (R() - 0.5) * s * 0.5, j * s + (R() - 0.5) * s * 0.4]); }
-    const tri = (a, b, c, y) => { const t = y / h; const q = R(); let col = base; if (q < t * 1.15 - 0.12) col = cols[(R() * 3) | 0]; else if (q < t * 1.3) col = mix(base, cols[(R() * 3) | 0], 0.35);
-      g.fillStyle = mix(col, R() < 0.5 ? '#000000' : '#ffffff', R() * 0.08); g.beginPath(); g.moveTo(...a); g.lineTo(...b); g.lineTo(...c); g.closePath(); g.fill(); g.strokeStyle = g.fillStyle; g.lineWidth = 1; g.stroke(); };
-    for (let j = 0; j < rows; j++) for (let i = 0; i < colsN; i++) { const a = jit[j][i], b = jit[j][i + 1], c = jit[j + 1][i], d = jit[j + 1][i + 1]; tri(a, b, c, (a[1] + c[1]) / 2); tri(b, d, c, (b[1] + d[1]) / 2); }
+    const panels = region==='body'?2:1;
+    const width=w/panels;
+    const shapes=[
+      [mix(base,ac3,.72),[[0,.73],[.36,.55],[1,.76],[1,1],[0,1]]],
+      [mix(base,accent,.52),[[0,.86],[.56,.65],[1,.83],[.81,1],[0,1]]],
+      [accent,[[0,.9],[.47,.74],[.66,.80],[.16,1],[0,1]]],
+      [ac3,[[.22,1],[.78,.82],[1,.9],[1,1]]],
+      [ac2,[[.55,.65],[.98,.81],[.96,.823],[.53,.665]]],
+    ];
+    for(let i=0;i<panels;i++) for(const [colour,points] of shapes){
+      g.beginPath();
+      for(const [x,y] of points) g.lineTo((i+(i%2?1-x:x))*width,y*h);
+      g.closePath();g.fillStyle=colour;g.fill();
+    }
   }
   g.restore();
 }
@@ -405,6 +405,18 @@ export function torsoCanvas(cv, st, { vOf, product }) {
   const W = cv.width, H = cv.height, g = cv.context;
   drawPattern(g, st.preset, st.colors.cuerpo, pcols(st), W, H, { seed: 11, k: W / 2048, region: 'body' });
   const Y = y => (1 - vOf(y)) * H;
+  if (Object.prototype.hasOwnProperty.call(illustrations,st.preset)) {
+    const sx=W/2048;
+    const [a,b,c]=pcols(st);
+    const jacket=product==='campera';
+    const colours={ink:ink(c),a,b,c};
+    const main=st.nombreLugar==='pecho-centro' && st.nombre;
+    const x=jacket?(st.logoImg && st.logoLugar!=='pecho-der'?364:654):512;
+    drawIllustration(g,st.preset,x*sx,Y(jacket?-.033:main?-.120:-.068), (jacket?182:446)*sx,colours,1.09);
+    if(!jacket && !main && !st.logoImg && !st.nombreLugar) {
+      st={...st,nombreLugar:'pecho-der',numeroLugar:'espalda-centro'};
+    }
+  }
   if (st.nombreLugar || st.numeroLugar || st.logoLugar || st.espaldaLugar || st.arte || st.tipografia || st.hideAutoMark) {
     torsoPlacements(g, st, product, Y, W, H);
     return;

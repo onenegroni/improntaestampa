@@ -6,7 +6,7 @@ const { chromium } = require('playwright');
 const base = process.env.BASE || 'http://127.0.0.1:8080/';
 const launchOptions = {
   ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : { channel: 'chrome' }),
-  args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+  args: process.env.HARDWARE_GL ? [] : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
 };
 const waitForStudio = page => page.waitForFunction(() => window.__impronta?.api, null, { timeout: 25000 });
 const activeStep = page => page.locator('#mtabs [aria-selected=true]').textContent();
@@ -24,6 +24,12 @@ async function run(browser, mobile) {
   try {
     await page.goto(base);
     assert.equal(await page.evaluate(() => scrollY), 0);
+    assert.equal(await page.locator('#productos a[href="#configurador"]').count(),1);
+    assert.equal(await page.locator('[data-owner-photo]').count(),11);
+    await page.locator('#catalogo-inicial button[data-catalogue-photo]').click();
+    await page.locator('#lb').waitFor({state:'visible'});
+    assert.match(await page.locator('#lb .stage img').getAttribute('src'),/egresaditos-celeste\.webp$/);
+    await page.keyboard.press('Escape');
     await page.locator('#configurador').scrollIntoViewIfNeeded();
     if (mobile) {
       const menuButton = page.getByRole('button', { name: 'Abrir menú' });
@@ -33,9 +39,9 @@ async function run(browser, mobile) {
       assert.equal(await page.evaluate(() => document.activeElement.textContent.trim()), 'Pedir presupuesto');
       await page.keyboard.press('Escape');
       await page.waitForFunction(() => document.activeElement.id === 'menuBtn');
-      await page.locator('#catalogo-primaria [data-product=campera]').click();
+      await page.locator('#productos a[href="#configurador"]').click();
       assert.equal(await page.getByRole('dialog', { name: 'Estudio de diseño' }).isVisible(), true);
-      assert.equal(await page.locator('#crumbT').textContent(), 'Campera con capucha');
+      assert.equal(await page.locator('#crumbT').textContent(), 'Remera personalizada');
     }
     await waitForStudio(page);
     assert.equal(await activeStep(page), 'Modelo');
@@ -46,6 +52,10 @@ async function run(browser, mobile) {
       assert.equal(await studioState(page, 'producto'), product);
       if (product === 'bandera') assert.equal(await page.locator('#fixedFabric').textContent(), 'Poliéster sublimable');
     }
+    await page.locator('#templateCollection').selectOption('empresas');
+    await page.locator('.fab [data-v=algodon]').click();
+    assert.match(await page.locator('#materialTechnique').textContent(),/DTF localizado/);
+    await page.locator('#templateCollection').selectOption('primaria');
     await page.locator('.fab [data-v=modal]').click();
     assert.equal(await studioState(page, 'tela'), 'modal');
     assert.match(await page.locator('#materialTechnique').textContent(), /Personalización a confirmar/);
@@ -100,7 +110,7 @@ async function run(browser, mobile) {
     await page.locator('#nextStep').click();
     assert.equal(await activeStep(page), 'Detalles');
 
-    await page.locator('#clearText').click();
+    if (await page.locator('#clearText').isEnabled()) await page.locator('#clearText').click();
     assert.equal(await page.locator('#fNombre').inputValue(), '');
     await page.locator('#fNombre').fill('JUANI');
     await page.locator('#fNum').fill('10x');
@@ -172,6 +182,7 @@ async function run(browser, mobile) {
     const total = await page.locator('#grid .card').count();
     const visible = await page.locator('#grid .card:not(.hide)').count();
     assert.equal(await page.locator('#gcount').textContent(), `Mostrando ${visible} de ${total}`);
+    await page.locator('#filters [data-f="3d"]').click();
     await page.locator('#grid [data-preset=seleccion]').click();
     assert.equal(await studioState(page, 'producto'), 'conjunto');
     assert.equal(await studioState(page, 'preset'), 'rayas');
@@ -224,6 +235,11 @@ async function run(browser, mobile) {
     await page.getByRole('tab',{name:'Modelo',exact:true}).click();
     await page.locator('.chip[data-v=campera]').click();
     await page.locator('[data-start=library]').click();
+    await page.locator('#templateCollection').selectOption('inicial');
+    const heroes=page.locator('[data-template=heroes]');
+    const heroesImage=heroes.locator('img');
+    assert.match(await heroesImage.getAttribute('src'),/heroes-campera\.webp$/);
+    await heroesImage.evaluate(image=>image.decode());
     await page.locator('#templateCollection').selectOption('primaria');
     const tricolor=page.locator('[data-template=tricolor]');
     await tricolor.click();

@@ -6,7 +6,8 @@ const path = require('node:path');
 const { chromium } = require('playwright');
 
 async function main() {
-  const browser = await chromium.launch({channel:'chrome',args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+  const args = process.env.SOFTWARE_GL ? ['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'] : [];
+  const browser = await chromium.launch({channel:'chrome',args});
   const dest = path.resolve(__dirname,'../site/img/plantillas');
   await fs.mkdir(dest,{recursive:true});
   try {
@@ -16,10 +17,10 @@ async function main() {
     await page.goto(process.env.BASE || 'http://127.0.0.1:8080/');
     await page.locator('#cfg').scrollIntoViewIfNeeded();
     await page.waitForFunction(()=>window.__impronta?.api,null,{timeout:45000});
-    const templates = await page.evaluate(()=>window.__impronta.templates.map(({id,photoModel,segment})=>({id,product:photoModel,segment})));
+    const templates = await page.evaluate(()=>window.__impronta.templates.flatMap(({id,photoModel,products,segment})=>
+      products.map(product=>({id,product,segment,suffix:product===photoModel?'':'-'+product}))));
     const only = process.env.IDS?.split(',');
-    const variants = [...templates,{id:'tricolor',product:'remera',segment:'primaria',suffix:'-remera'}];
-    for (const {id,product,segment,suffix=''} of variants) {
+    for (const {id,product,segment,suffix} of templates) {
       if (only && !only.includes(id)) continue;
       const image = await page.evaluate(async ({id,product,segment})=>{
         const {state,api,sync,applyTemplate}=window.__impronta;
@@ -30,8 +31,8 @@ async function main() {
         if (!applyTemplate(id)) throw new Error(`Template unavailable for ${product}: ${id}`);
         if (oldProduct!==product) api.rebuild();
         const back=['college','varsity','tipografia','identidad','argentina','tricolor'].includes(id);
-        const [shot]=await api.renderSet({w:360,h:352,zoom:product==='gorra' ? 1.04 : 1.06,
-          angles:[['thumbnail',back ? Math.PI-.29 : -.41]],pitch:product==='gorra' ? .20 : .105});
+        const [shot]=await api.renderSet({w:360,h:352,zoom:1.07,thumbnail:true,
+          angles:[['thumbnail',back ? Math.PI-.29 : -.32]],pitch:product==='gorra' ? .20 : .105});
         const source=new Image();
         source.src=shot.url;
         await source.decode();

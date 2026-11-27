@@ -63,22 +63,29 @@
  <div class="wrap facts rv"><div><b>Full color</b><span>Sublimación, diseño a elección</span></div><div><b>T4 a XXL</b><span>Desde jardín hasta adultos</span></div><div><b>Todo el país</b><span>Envíos desde San Juan</span></div></div>
 </section>
 
+<section class="prod" id="productos" aria-labelledby="prodT">
+ <div class="wrap catalogue-heading">
+  <div><h2 id="prodT">Catálogo</h2><p>Prendas personalizadas para egresados, equipos y marcas.</p></div>
+  <a class="btn btn-red" href="#configurador">Diseñá en 3D <span aria-hidden="true">↗</span></a>
+ </div>
+ <!--CATALOGUE-->
+ <div class="wrap"><details class="mats"><summary>Telas y estampado</summary><div class="mgrid"><!--MATERIALS--></div></details></div>
+</section>
+
 <section class="config" id="configurador" aria-labelledby="cfgTitle">
  <div class="wrap studio-intro">
-  <p class="studio-kicker"><span></span> Diseñador 3D</p>
-  <h2 id="cfgTitle">Tu diseño, <em>en 3D</em></h2>
-  <p>Elegí un producto y hacelo tuyo. Mirá cada cambio en tiempo real.</p>
+  <h2 id="cfgTitle">Diseñador <em>3D</em></h2>
  </div>
  <div class="wrap mteaser">
-  <button class="mt-card" id="openDz" type="button"><img src="img/studio-shoulder-poster.webp" width="820" height="820" alt="" loading="lazy"><span class="mt-cta">Empezar a diseñar</span></button>
+  <button class="mt-card" id="openDz" type="button"><img src="img/studio-clean-poster.webp" width="820" height="820" alt="" loading="lazy"><span class="mt-cta">Empezar a diseñar</span></button>
  </div>
  <div class="wrap cfgw"><div class="cfg" id="cfg">
-  <div class="dz-head"><b>Estudio de diseño</b><button class="dz-x" id="closeDz" type="button" aria-label="Cerrar diseñador"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>
+  <div class="dz-head"><b>Diseñador 3D</b><button class="dz-x" id="closeDz" type="button" aria-label="Cerrar diseñador"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>
   <div class="viewer" id="viewer" aria-busy="true">
-   <img class="poster" id="poster" src="img/studio-shoulder-poster.webp" width="820" height="820" alt="" aria-hidden="true" loading="lazy" decoding="async">
+   <img class="poster" id="poster" src="img/studio-clean-poster.webp" width="820" height="820" alt="" aria-hidden="true" loading="lazy" decoding="async">
    <div class="gl" id="gl" aria-label="Vista 3D. Arrastrá para girar o usá los botones de vista y zoom." role="img"></div>
    <div class="loader" id="loader" role="status"><span>Cargando vista 3D</span><span class="bar"><i></i></span></div>
-   <div class="vtop"><div class="crumb"><b id="crumbT">Remera</b><span id="crumbS"><!--DEFAULT-FABRIC--> · Talle M</span></div><span class="view-status"><i></i> Vista en vivo</span></div>
+   <div class="vtop"><div class="crumb"><b id="crumbT">Remera</b><span id="crumbS"><!--DEFAULT-FABRIC--> · Talle M</span></div></div>
    <div class="vtools" role="group" aria-label="Controles de la vista 3D">
     <button type="button" id="zIn" title="Acercar" aria-label="Acercar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 5v14M5 12h14"/></svg></button>
     <button type="button" id="zOut" title="Alejar" aria-label="Alejar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 12h14"/></svg></button>
@@ -87,11 +94,9 @@
    </div>
    <div class="view-bottom">
     <div class="seg" id="seg" role="group" aria-label="Ángulos de vista"><button type="button" data-yaw="0" aria-pressed="false">Frente</button><button type="button" data-yaw="3.141592653589793" aria-pressed="false">Espalda</button><button type="button" data-yaw="-1.5707963267948966" aria-pressed="false">Perfil</button><button type="button" data-yaw="-0.6" aria-pressed="true">3/4</button></div>
-    <span class="view-hint">Arrastrá para girar · Tocá el producto para cambiar su color</span>
    </div>
   </div>
   <aside class="panel" aria-label="Opciones de diseño">
-   <header class="studio-panel-head"><h3>Personalizá tu diseño</h3><p id="stepInfo">Paso 1 de 4</p></header>
    <div class="mtabs" id="mtabs" role="tablist" aria-label="Pasos del diseño"></div>
    <div class="groups" id="groups"></div>
    <div class="pf">
@@ -103,19 +108,8 @@
  </div></div>
 </section>
 
-<section class="prod" id="productos" aria-labelledby="prodT">
- <div class="wrap shead center"><p class="kicker rv">Lo que hacemos</p><h2 id="prodT" class="split"><span class="ln"><span>Hacemos tu diseño realidad.</span></span></h2>
- <p class="sub rv d1">Prendas personalizadas para egresados, colegios, equipos y marcas. Elegí la opción que mejor va con tu grupo.</p></div>
- <!--CATALOGUE-->
- <div class="wrap mats">
-  <h3 class="rv">Telas y formas de estampar.</h3>
-  <div class="mgrid"><!--MATERIALS--></div>
- </div>
-</section>
-
 <section class="gallery" id="trabajos" aria-labelledby="galT">
- <div class="wrap shead center"><p class="kicker rv">Trabajos realizados</p><h2 id="galT" class="split"><span class="ln"><span>Promos que quisieron</span></span><span class="ln"><span>destacarse.</span></span></h2>
- <p class="sub rv d1">Fotos reales de nuestro taller y diseños del configurador. Tocá un diseño 3D para personalizarlo.</p></div>
+ <div class="wrap shead center"><h2 id="galT">Trabajos realizados</h2></div>
  <div class="wrap">
  <div class="filters rv" id="filters" role="group" aria-label="Filtrar trabajos"><button aria-pressed="true" data-f="all">Todos</button><button aria-pressed="false" data-f="egresados">Egresados</button><button aria-pressed="false" data-f="inicial">Nivel inicial</button><button aria-pressed="false" data-f="primaria">Primaria</button><button aria-pressed="false" data-f="secundaria">Secundaria</button><button aria-pressed="false" data-f="deportivos">Deportivos</button><button aria-pressed="false" data-f="accesorios">Accesorios</button><button aria-pressed="false" data-f="banderas">Banderas</button><button aria-pressed="false" data-f="3d">Diseños 3D</button><span class="cnt sr" id="gcount" role="status"></span></div>
  <div class="grid" id="grid">
