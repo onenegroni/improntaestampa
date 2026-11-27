@@ -329,7 +329,7 @@ export function shortCanvas(cv, st, withoutNumber) {
     [.944, .962].forEach(y => line(g, 0, y * H, W, y * H));
     [.013, .487, .513, .987].forEach(x => line(g, x * W, 0, x * W, .95 * H));
   });
-  withoutNumber.context.drawImage(cv.canvas, 0, 0, W, H);
+  if (withoutNumber !== cv) withoutNumber.context.drawImage(cv.canvas, 0, 0, W, H);
   if (st.numero) {
     g.fillStyle = ink(base);
     g.textAlign = 'center';

@@ -1,0 +1,35 @@
+{
+  "segments": {
+    "inicial": "Nivel inicial",
+    "primaria": "Primaria",
+    "secundaria": "Secundaria",
+    "uniformes": "Uniformes escolares",
+    "deportivos": "Deportivos",
+    "empresas": "Empresas y promos",
+    "accesorios": "Accesorios"
+  },
+  "graduation": [
+    {"id":"inicial","title":"Nivel inicial","note":"Egresaditos","photo":"egresaditos-celeste","copy":"Remeras, camperas con capucha y conjuntos para jardín. Manitos, estrellitas, dinosaurios y otros dibujos para festejar el primer gran paso.","links":[["remera","Diseñá la remera"],["campera","Diseñá la campera"]]},
+    {"id":"primaria","title":"Primaria","note":"Egresados","photo":"tricolor-coral","copy":"Remeras, camperas y conjuntos con franjas tricolor, degradés o gráficas galácticas. Sumá nombres, iniciales y los detalles de la promo.","links":[["campera","Diseñá la campera"],["remera","Diseñá la remera"]]},
+    {"id":"secundaria","title":"Secundaria","note":"Egresados","photo":"varsity-bordo","copy":"Estilos college, composiciones minimalistas y combinaciones de color para darle una identidad propia a tu promo.","links":[["remera","Diseñá la remera"],["campera","Diseñá la campera"]]}
+  ],
+  "categories": [
+    {"id":"uniformes","title":"Uniformes escolares","copy":"Chombas escolares y remeras de educación física. ¿Necesitás uniformes para tu colegio? Consultanos.","enquiry":["Consultá por uniformes","Hola Impronta, quiero consultar por chombas o remeras de educación física para mi colegio."]},
+    {"id":"deportivos","title":"Indumentaria deportiva","photo":"deportivo-estrella","copy":"Camisetas, remeras, shorts, musculosas y conjuntos para fútbol, hockey, zumba, gimnasios y otros deportes. Consultá por prendas individuales o conjuntos coordinados.","links":[["conjunto","Diseñá el conjunto"],["remera","Diseñá la remera"],["short","Diseñá el short"],["musculosa","Diseñá la musculosa"]]},
+    {"id":"empresas","title":"Tu marca, en cada prenda","image":"catalog-empresas.webp","alt":"Remera grafito con una marca aplicada en el pecho","copy":"Remeras promocionales y publicitarias, camperas y prendas para comercios, emprendimientos y acciones promocionales. Personalizalas con tu logo, tus colores y tus gráficas.","links":[["remera","Diseñá la remera"],["campera","Diseñá la campera"]]},
+    {"id":"accesorios","title":"Accesorios y regalos","photo":"gorras-cinco-gajos","copy":"Gorras de cinco gajos para chicos y adultos. Consultá por colores, disponibilidad, tazas personalizadas y opciones de regalos empresariales.","links":[["gorra","Diseñá la gorra infantil","Infantil ajustable"],["gorra","Diseñá la gorra de adulto","Adulto ajustable"],["bandera","Diseñá la bandera"]],"enquiry":["Consultá por tazas y regalos","Hola Impronta, quiero consultar por tazas personalizadas o regalos empresariales."]}
+  ],
+  "photos": [
+    ["tricolor-coral","primaria","Tricolor coral, azul y negro","Camperas raglán y remeras con tres franjas horizontales",1280,736],
+    ["argentina-azul","primaria","Promo 26 · Azul y celeste","Remera numerada y campera raglán a juego con detalles de Argentina",1438,1450],
+    ["gorras-cinco-gajos","accesorios","Gorras de cinco gajos · Promo 26","Gorras trucker de frente blanco y malla oscura con nombres personalizados",720,1280],
+    ["egresaditos-celeste","inicial","Egresaditos · Estrellas celestes","Frente y espalda de una remera infantil con estrellas y dibujos de egresaditos",1440,810],
+    ["varsity-bordo","secundaria","Tricolor bordó · Estilo varsity","Conjunto bordó, blanco y negro con campera raglán, remeras y gorra",1440,1102],
+    ["primaria-doodles","primaria","Sexto grado · Doodles celestes","Remeras celestes con ilustraciones, nombres y detalles impresos en las mangas",1440,1157],
+    ["deportivo-estrella","deportivos","Conjunto deportivo · Estrella","Camisetas azules de frente y espalda y shorts a juego",1440,927],
+    ["argentina-sol","primaria","Argentina · Sol y franjas","Campera clara y azul con sol estampado, junto a remeras a juego",1440,927],
+    ["argentina-forro-ilustrado","primaria","Argentina · Estampa interior ilustrada","Campera azul abierta que muestra un trabajo de impresión interior",1440,974],
+    ["argentina-estampas","primaria","Argentina · Detalles personalizados","Campera azul con un estampado interior personalizado",1440,837],
+    ["argentina-forro-futbol","primaria","Argentina · Un diseño de fútbol","Campera azul con una ilustración de fútbol en el interior",1440,903]
+  ]
+}

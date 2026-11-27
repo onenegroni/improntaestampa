@@ -1,5 +1,6 @@
 // Impronta Estampa — page logic (UI, lazy 3D, gallery, WhatsApp, renders)
 import { createWheel, normHex } from './colorwheel.js';
+import { segments } from '../data/catalogue.json';
 const CANONICAL_ORIGIN = 'https://improntaestampa.pages.dev/';
 const WA = '5492644127431';
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -14,6 +15,7 @@ const P = {
   campera: { label: 'Campera', crumb: 'Campera con capucha', telas: ['frizado'], zones: { cuerpo: 'Cuerpo', mangas: 'Mangas', capucha: 'Capucha', punos: 'Puños y cintura' }, frase: 'Más que una campera, un recuerdo para siempre' },
   conjunto: { label: 'Conjunto deportivo', crumb: 'Conjunto deportivo', telas: ['deportiva'], zones: { cuerpo: 'Remera', short: 'Short', mangas: 'Mangas', capucha: null, punos: 'Cuello y cintura' }, frase: '' },
   musculosa: { label: 'Musculosa', crumb: 'Musculosa', telas: ['deportiva', 'modal'], zones: { cuerpo: 'Cuerpo', mangas: null, capucha: null, punos: 'Vivos' }, frase: '' },
+  short: { label: 'Short', crumb: 'Short deportivo', telas: ['deportiva'], zones: { short: 'Short', punos: 'Cintura' }, frase: '' },
   bandera: { label: 'Bandera', crumb: 'Bandera', telas: [], fixed: 'Poliéster sublimable', zones: { cuerpo: 'Fondo', mangas: null, capucha: null, punos: null }, sizes: ['90×60 cm', '150×90 cm', '200×100 cm'], frase: '' },
   gorra: { label: 'Gorra', crumb: 'Gorra trucker de cinco gajos', telas: [], fixed: 'Frente sublimado y malla', zones: { cuerpo: 'Frente', mangas: 'Visera', malla: 'Malla', capucha: null, punos: 'Botón y vivos' }, sizes: ['Infantil ajustable', 'Adulto ajustable'], frase: '' },
 };
@@ -69,6 +71,7 @@ const SHAPES = {
   musculosa: '<path d="M7 2h3c0 5 4 5 4 0h3c0 4 1 6 3 8l-2 3v8H6v-8l-2-3c2-2 3-4 3-8Z"/>',
   bandera: '<path d="M4 22V3m0 1c5-3 10 3 16 0v11c-6 3-11-3-16 0"/>',
   gorra: '<path d="M8 14a6 6 0 0 1 12 0v3H8m0-3-6 2c-1 1-1 3 2 3l8-2m1-3c0-3 1-6 3-6"/>',
+  short: '<path d="M6 4h12l3 15-7 1-2-6-2 6-7-1L6 4Zm0 4h12"/>',
 };
 const MQ = matchMedia('(max-width: 768px), (max-height: 500px) and (max-width: 1000px)');
 let currentStep = 0;
@@ -173,7 +176,7 @@ function sync() {
   $('#fixedFabric').textContent = pr.fixed || '';
   $('#fixedFabric').hidden = !pr.fixed;
 
-  if (!pr.zones[zone]) zone = 'cuerpo';
+  if (!pr.zones[zone]) zone = Object.keys(pr.zones).find(key => pr.zones[key]);
   const customZone = active?.kind === 'zone';
   $$('#grp-colores .zp').forEach(button => {
     const key = button.dataset.z;
@@ -447,11 +450,13 @@ function openWheel(selection, slot, title) {
     groups.scrollBy({ top: Math.min(offset, Math.max(0, bounds.top - container.top - 8)), behavior: 'smooth' });
   });
 }
-function setProduct(product) {
-  if (product === state.producto) return;
+function setProduct(product, segment, size) {
+  if (!P[product] || (product === state.producto && !segment && !size)) return;
   closeWheel();
   if (state.frase === P[state.producto].frase) state.frase = P[product].frase;
   state.producto = product;
+  if (segment && segments[segment]) state.segmento = segment;
+  if (size && sizeList().includes(size)) state.talle = size;
   sync();
   api?.rebuild(true);
 }
@@ -459,7 +464,7 @@ function setProduct(product) {
 /* ---------- lazy 3D ---------- */
 // The 3D studio ships as a classic script (js/studio.js) so the site also works when opened from file://.
 let api = null, loading = null, failed = false;
-const FALLBACK_IMG = { remera: 'img/studio-shoulder-poster.webp', campera: 'img/catalog-egresados.webp', conjunto: 'img/catalog-deportivos.webp', musculosa: 'img/preset-zumba.webp', bandera: 'img/catalog-banderas.webp', gorra: 'img/catalog-gorras.webp' };
+const FALLBACK_IMG = { remera: 'img/studio-shoulder-poster.webp', campera: 'img/catalog-egresados.webp', conjunto: 'img/catalog-deportivos.webp', musculosa: 'img/preset-zumba.webp', short: 'img/trabajos/deportivo-estrella-680.webp', bandera: 'img/catalog-banderas.webp', gorra: 'img/catalog-gorras.webp' };
 function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.async = true; s.onload = res; s.onerror = () => rej(new Error('No se pudo cargar ' + src)); document.head.appendChild(s); }); }
 function webglOK() { try { const c = document.createElement('canvas'); const gl = window.WebGLRenderingContext && (c.getContext('webgl2') || c.getContext('webgl')); if (!gl) return false; const x = gl.getExtension('WEBGL_lose_context'); x && x.loseContext(); return true; } catch (e) { return false; } }
 function showFallback(reason) {
@@ -664,7 +669,8 @@ function setFilter(filter) {
   let visible = 0;
   $$('#filters button').forEach(button => button.setAttribute('aria-pressed', button.dataset.f === filter));
   for (const card of cards) {
-    const show = filter === 'all' || card.dataset.cat === filter;
+    const show = filter === 'all' || card.dataset.cat === filter ||
+      (filter === 'egresados' && ['inicial','primaria','secundaria'].includes(card.dataset.cat));
     card.classList.toggle('hide', !show);
     if (show) {
       card.classList.add('in');
@@ -674,7 +680,11 @@ function setFilter(filter) {
   $('#gcount').textContent = `Mostrando ${visible} de ${cards.length}`;
 }
 $('#filters').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setFilter(b.dataset.f); });
-$$('[data-product]').forEach(a => a.addEventListener('click', () => { load3D(); setProduct(a.dataset.product); selectStep(0); }));
+$$('[data-product]').forEach(a => a.addEventListener('click', () => {
+  setProduct(a.dataset.product, a.dataset.segment, a.dataset.size);
+  selectStep(0);
+  load3D();
+}));
 
 /* ---------- nav, menu, reveal, parallax ---------- */
 const nav = $('#nav'), fab = $('#fabWa'), heroEl = $('#hero'); const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;

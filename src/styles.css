@@ -413,6 +413,33 @@ section[id],.viewer,.cfg{scroll-margin-top:64px}
 .pitem h3{font-size:clamp(22px,2.45vw,32px);font-weight:700;letter-spacing:-.038em;line-height:1.06}
 .pitem p{font-size:16px;line-height:1.5;color:var(--mute);margin:8px 0 12px;max-width:38ch}
 .pitem .more{align-self:start;margin-top:auto;min-height:42px;display:inline-flex;align-items:center}
+.catalogue-nav{display:flex;gap:8px;justify-content:center;overflow:auto;margin:0 auto clamp(28px,5vw,64px);scrollbar-width:thin}
+.catalogue-nav a{flex:none;border:1px solid var(--line);border-radius:999px;padding:9px 15px;font-size:14px;font-weight:650;text-decoration:none;background:#fff}
+.catalogue-nav a:hover{color:var(--red);border-color:currentColor}
+.catalogue-intro{margin-bottom:22px}
+.catalogue-intro h3{font-size:clamp(27px,4vw,46px);line-height:1.05;letter-spacing:-.045em}
+.catalogue-intro p{margin-top:6px;color:var(--mute)}
+.catalogue-graduation,.catalogue-services .pitem{scroll-margin-top:112px}
+.catalogue-graduation .pimg{aspect-ratio:4/3}
+.pitem h4{font-size:clamp(22px,2.45vw,32px);font-weight:700;letter-spacing:-.038em;line-height:1.06}
+.pitem .catalogue-kicker{font-size:12px;color:var(--red);font-weight:730;margin:0 0 6px}
+.catalogue-copy{display:flex;flex-direction:column;flex:1}
+.catalogue-copy>p:not(.catalogue-kicker){max-width:52ch}
+.catalogue-links{display:flex;flex-wrap:wrap;gap:0 15px;margin-top:auto}
+.catalogue-links .more{font-size:14px;margin-top:0}
+.catalogue-services{margin-top:clamp(32px,5vw,60px)}
+.catalogue-services .product-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.catalogue-services .pitem{background:#f2f2f3;border-radius:var(--r-md);overflow:hidden}
+.catalogue-services .pimg{aspect-ratio:2/1;border-radius:0;margin:0}
+.catalogue-services .catalogue-copy{padding:clamp(17px,2vw,28px)}
+.catalogue-services .catalogue-text{justify-content:center;background:#edeee9}
+.catalogue-services .catalogue-text .catalogue-copy{flex:0 1 auto}
+@media(max-width:768px){
+ .catalogue-nav{justify-content:flex-start}
+ .catalogue-services{margin-top:26px}
+ .catalogue-services .product-list{display:grid!important;overflow:visible;grid-template-columns:1fr;padding:0 var(--g)!important}
+ .catalogue-services .catalogue-copy{padding:17px 18px}
+}
 .mats{padding:clamp(96px,10vw,144px) 0 0;text-align:center}
 .mats h3{font-size:clamp(32px,3.8vw,56px);font-weight:700;letter-spacing:-.04em;line-height:1.05}
 .mgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;margin-top:56px;text-align:left}

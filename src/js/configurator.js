@@ -160,7 +160,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   let capNet = null;
   const twill = T.knitNormal(160, 'twill'); twill.repeat.set(21, 11);
   const rib = T.knitNormal(128, 'rib'); rib.repeat.set(13, 2);
-  const NEEDS = { remera: ['torso', 'sleeve'], campera: ['torso', 'sleeve', 'hood'], conjunto: ['torso', 'sleeve', 'short', 'shortPlain'], musculosa: ['torso'], bandera: ['flag'], gorra: ['cap', 'visor'] };
+  const NEEDS = { remera: ['torso', 'sleeve'], campera: ['torso', 'sleeve', 'hood'], conjunto: ['torso', 'sleeve', 'short', 'shortPlain'], musculosa: ['torso'], short: ['short', 'shortPlain'], bandera: ['flag'], gorra: ['cap', 'visor'] };
   const texes = {};
   const surfaces = {};
   const maxTextureSize = renderer.capabilities.maxTextureSize;
@@ -377,6 +377,8 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     } else if (P === 'conjunto') {
       // The jersey tucks into the shorts with the elastic band in front.
       product.add(buildFittedGarment('kit', .14), buildFittedGarment('shorts', .14));
+    } else if (P === 'short') {
+      product.add(buildFittedGarment('shorts'));
     } else if (P === 'bandera') {
       const [width, height] = state.talle.split('×').map(parseFloat);
       const clothHeight = Math.min(.8, 1.2 * (height / width || .64));
