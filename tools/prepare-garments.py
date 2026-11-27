@@ -416,6 +416,78 @@ def emit_panels(mesh, dest, names, *, bands=None):
                 knit_panel(polygon, target, dest['punos'], band[1])
             else:
                 emit_panel(target, polygon)
+
+
+def raglan_boundary(p):
+    # The front and back diagonal both finish on the neckline. Below the
+    # armpit, carry the cut between the two separated hanging surfaces.
+    rear = smoothstep(-.078, .045, p.y)
+    depth = 1.395 - p.z
+    diagonal = .062 + (.59 - .04 * rear) * depth + .007 * math.sin(clamp(depth / .22) * math.pi)
+    hem_ease = .020 * (1. - smoothstep(.91, 1.04, p.z))
+    underarm = .172 + .007 * rear + .025 * max(0., 1.22 - p.z) + hem_ease
+    return abs(p.x) - min(diagonal, underarm)
+
+
+def raglan_print(p, source, sleeve, uv):
+    if not sleeve and source < 2:
+        return uv
+    level = clamp((p.z - .834) * fit.ASSEMBLY_SCALE * .8 / .505)
+    if not sleeve:
+        u = .25 + p.x * 1.08 if p.y < -.03 else .75 - p.x * 1.02
+        return Vector((u, level))
+    # Separate printable charts for each arm. Park the UV join on the inside
+    # of the sleeve, with the fabric forwards at the first quarter of each.
+    arm_axis = .104 + .335 * (1.395 - p.z)
+    arc = math.atan2(p.y + .042, abs(p.x) - arm_axis) / math.tau + .5
+    return Vector((.5 * (arc + int(p.x > 0.)), level))
+
+
+def emit_raglan(mesh, dest, waist, cuffs):
+    surface = PanelSurface(mesh)
+    occlusion = fit.bake_occlusion(mesh, surface.tree)
+    waist_dist = sleeve_distance(mesh, [waist])
+    cuff_dist = sleeve_distance(mesh, cuffs)
+    for tri in surface.triangles:
+        source = mesh.polygons[tri.polygon_index].material_index
+        corners = []
+        for loop in tri.loops:
+            index = mesh.loops[loop].vertex_index
+            vertex = mesh.vertices[index]
+            corners.append((vertex.co, vertex.normal, surface.uv[loop].uv.copy(), occlusion[index], index))
+        for sleeve, name, distance, band in ((False, 'torso', waist_dist, .041), (True, 'sleeve', cuff_dist, .044)):
+            polygon = [(p, n, uv, ao, min(distance[index], .10)) for p, n, uv, ao, index in corners]
+            direction = 1. if sleeve else -1.
+            polygon = clip_panel(polygon, lambda value: direction * raglan_boundary(value[0]))
+            if not polygon:
+                continue
+            cut = [point for point in polygon if abs(raglan_boundary(point[0])) < .00016]
+            polygon = [(p, n, raglan_print(p, source, sleeve, uv),
+                        ao * (1. - .105 * math.exp(-(raglan_boundary(p) / .0032)**2)), dist)
+                       for p, n, uv, ao, dist in polygon]
+            if sleeve and max(p[2].x for p in polygon) - min(p[2].x for p in polygon) > .28:
+                # Duplicated inner edge for the two sides of the wrap.
+                origin = .5 if polygon[0][0].x > 0 else 0.
+                for point in polygon:
+                    if point[2].x < origin + .25:
+                        point[2].x = origin + .5
+            if not sleeve and source == 0 and min(abs(p[0].x) for p in polygon) < .015:
+                pieces = [clip_panel(polygon, lambda v: v[0].x - .0045),
+                          clip_panel(polygon, lambda v: -v[0].x - .0045)]
+            else:
+                pieces = [polygon]
+            for piece in pieces:
+                if any(v[4] <= band for v in piece):
+                    knit_panel(piece, dest[name], dest['punos'], band)
+                else:
+                    emit_panel(dest[name], piece)
+            if not sleeve and len(cut) == 2 and (cut[0][0] - cut[1][0]).length > .0025:
+                a, b = cut
+                sa, sb = a[0].lerp(b[0], .12), a[0].lerp(b[0], .82)
+                na, nb = a[1], b[1]
+                fit.stitch_segment(sa + na * .00065, sb + nb * .00065, na, nb,
+                                   (raglan_print(sa, source, False, a[2]), raglan_print(sb, source, False, b[2])),
+                                   dest['bodyThread'], .00048)
     return surface
 
 
@@ -774,10 +846,7 @@ def export_hoodie(obj, output):
             waist = path
     if neck is None or waist is None or len(cuffs) != 2:
         raise ValueError('Expected a neck, waistband, and two sleeve openings')
-    emit_panels(mesh,dest,('torso','torso','sleeve'),bands={
-        'torso': (sleeve_distance(mesh,[waist]),.041),
-        'sleeve': (sleeve_distance(mesh,cuffs),.044),
-    })
+    emit_raglan(mesh,dest,waist,cuffs)
     body_surface = PanelSurface(mesh,{0,1})
     sleeve_surface = PanelSurface(mesh,{2})
     for path in cuffs:

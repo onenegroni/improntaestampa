@@ -590,19 +590,19 @@ export function waveFlag(geo, t) {
   geo.computeVertexNormals();
 }
 
-/* Low-profile six-panel trucker cap with a curved sandwich visor and rear closure. */
-export const CAP_SEAMS = Array.from({ length: 6 }, (_, i) => .75 - 1 / 12 + i / 6);
+// One broad front gajo and four mesh gores, with the last meeting the first.
+const CAP_PANELS = [.105, .395, .5725, .75, .9275, 1.105];
 export function cap() {
-  // The CC0 Grab3D cap provides a dimensional check for the crown and visor.
-  // https://grab3d.com/models/props/baseball-cap/
   const RX = .100, RZ = .113, RY = .119;
   const crownAt = (u, v) => {
     const a = u * TAU, b = v * Math.PI / 2;
     const z = Math.sin(a);
     const front = Math.max(0, z);
     const rear = Math.max(0, -z);
-    const taper = Math.pow(Math.max(0, Math.cos(b)), .83 - .30 * front);
-    const panel = Math.pow(.5 + .5 * Math.cos((u - .25) * 6 * TAU), 2.5) * .0027 * Math.sin(Math.PI * v);
+    const taper = Math.pow(Math.max(0, Math.cos(b)), .83 - .37 * front);
+    const longitude = u < CAP_PANELS[0] ? u + 1 : u;
+    const allowance = Math.min(...CAP_PANELS.map(edge => Math.abs(edge - longitude)));
+    const panel = Math.exp(-((allowance / .009) ** 2)) * .0016 * Math.sin(Math.PI * v);
     const pinch = Math.sin(a * 11 + 2 * v) * .0012 * Math.exp(-Math.pow((v - .2) / .18, 2));
     const shape = taper * (1 + .14 * front * Math.sin(v * Math.PI) - .05 * rear * Math.sin(v * Math.PI));
     const baseY = -.006 + .016 * Math.pow(Math.cos(a), 2) + .006 * z;
@@ -616,11 +616,15 @@ export function cap() {
     if (inner) { point[0] *= .978; point[2] *= .977; point[1] -= .002; }
     return point;
   };
-  const crown = surface(156, 58, crownSurface, {
-    wrapU: true, uvFn: (u, v) => [1 - u, lerp(cut(u), 1, v)],
-    shade: (u, v) => 1 - .15 * (1 - sstep(.02, .21, v)),
+  const panels = CAP_PANELS.slice(0,-1).map((start, i) => {
+    const end = CAP_PANELS[i + 1];
+    return surface(i === 0 ? 62 : 28, 48, (u, v) => crownSurface(lerp(start,end,u),v), {
+      uvFn: (u,v) => [1 - u,v],
+      shade: (u,v) => 1 - .14 * (1 - sstep(.02,.21,v)),
+    });
   });
-  const inner = surface(130, 14, (u, v) => crownSurface(u, v * .28, true), {wrapU: true});
+  // The sweatband is opaque. The remainder of the rear opens into the mesh.
+  const inner = surface(130, 9, (u, v) => crownSurface(u, v * .095, true), {wrapU: true});
   const band = surface(156, 8, (u, v) => {
     const outer = crownSurface(u, .065 * v);
     outer[0] *= 1.009 + .009 * Math.sin(v * Math.PI);
@@ -659,8 +663,8 @@ export function cap() {
     button.translate(x, .006, -RZ + Math.abs(x) * .29 - .0006);
     return button;
   });
-  const seams = CAP_SEAMS.map(seam => trace(32, t => {
-    const point = crownAt((2 - seam) % 1, .09 + .85 * t);
+  const seams = CAP_PANELS.slice(0,-1).map(seam => trace(40, t => {
+    const point = crownSurface(seam, .045 + .925 * t);
     return liftFromAxis(point, .00068);
   }));
   const brimThread = [.58, .69, .80, .91].map(v => trace(40, t => {
@@ -668,15 +672,7 @@ export function cap() {
     point[1] += .00066;
     return point;
   }));
-  const vents = [.34, .53, .70, .92].map(u => {
-    const p = crownAt(u, .53);
-    const ring = new THREE.TorusGeometry(.00185, .00047, 6, 14);
-    const axis = new THREE.Vector3(p[0], p[1] * .54, p[2]).normalize();
-    ring.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), axis));
-    ring.translate(...p.map((coordinate, index) => coordinate + axis.getComponent(index) * .00070));
-    return ring;
-  });
-  return { crown, inner, visorTop, visorBottom, visorEdge, button, band, snaps, closure, seams, brimThread, vents };
+  return { front: panels[0], rear: panels.slice(1), inner, visorTop, visorBottom, visorEdge, button, band, snaps, closure, seams, brimThread };
 }
 
 export function zipperParts(fn) {

@@ -22,6 +22,7 @@ const ZONE_MATERIALS = {
   mangas: ['sleeve', 'sleeveFacing', 'visor'],
   capucha: ['hood', 'lining'],
   punos: ['punos', 'cord'],
+  malla: ['capMesh'],
 };
 const ZONES = Object.keys(ZONE_MATERIALS);
 const isMobile = matchMedia('(max-width: 760px)').matches || /iPhone|Android/i.test(navigator.userAgent);
@@ -402,21 +403,22 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       const cap = new THREE.Group();
       cap.rotation.x = .08;
       const crown = parts.cap = fittedFabric('cap', THREE.DoubleSide);
-      if (!lowPower) {
-        capNet ||= T.truckerMeshMask();
-        crown.alphaMap = capNet;
-        crown.alphaTest = .43;
-        crown.alphaToCoverage = true;
-      }
+      capNet ||= T.truckerMeshMask();
+      const net = parts.capMesh = own(new THREE.MeshStandardMaterial({
+        color: state.colors.malla, side: THREE.DoubleSide, vertexColors: true,
+        alphaMap: capNet, alphaTest: .48, alphaToCoverage: true, roughness: .97,
+        normalMap: twill, normalScale: new THREE.Vector2(.16,.16), envMapIntensity: .30,
+      }));
       const visor = parts.visor = fittedFabric('visor', THREE.DoubleSide);
       const trim = parts.punos = colorMat(state.colors.punos);
-      cap.add(mesh(shape.crown, crown), mesh(shape.inner, strapMaterial), mesh(shape.band, trim), mesh(shape.button, trim));
+      cap.add(mesh(shape.front, crown), ...shape.rear.map(geo => mesh(geo, net)),
+        mesh(shape.inner, strapMaterial), mesh(shape.band, trim), mesh(shape.button, trim));
       cap.add(mesh(shape.visorTop, visor), mesh(shape.visorBottom, visor), mesh(shape.visorEdge, visor));
       cap.add(mesh(shape.snaps, strapMaterial), ...shape.closure.map(geo => mesh(geo, strapMaterial)));
       const seams = seamMaterial('bodyThread');
-      cap.add(...shape.vents.map(geo => mesh(geo, seams)));
       addThread(cap, shape.seams, seams, { pitch: .0021, radius: .00031 });
       addThread(cap, shape.brimThread, seamMaterial('sleeveThread'), { pitch: .0024, radius: .00032, normal: [0, 1, 0] });
+      if (state.talle === 'Infantil ajustable') cap.scale.setScalar(.91);
       product.add(cap);
     }
     spin.updateMatrixWorld(true);
@@ -486,7 +488,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     if (names.includes('hood')) T.hoodCanvas(get('hood'), st);
     if (names.includes('short')) T.shortCanvas(get('short'), st, get('shortPlain'));
     if (names.includes('flag')) T.flagCanvas(get('flag'), st);
-    if (names.includes('cap')) T.capCanvas(get('cap'), st, G.CAP_SEAMS);
+    if (names.includes('cap')) T.capCanvas(get('cap'), st);
     if (names.includes('visor')) T.plainCanvas(get('visor'), st, 'mangas');
   }
   function printSignature(name) {
@@ -501,7 +503,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       case 'short':
       case 'shortPlain': return [st.colors.short, ...accents, st.numero];
       case 'flag': return [st.colors.cuerpo, ...accents, st.espalda, st.escuela];
-      case 'cap': return [st.colors.cuerpo, ...accents, st.espalda];
+      case 'cap': return [st.colors.cuerpo, ...accents, st.espalda, st.nombre];
       default: return [st.colors.mangas];
     }
   }
@@ -512,6 +514,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     const st = state, f = fabrics[st.tela] || fabrics.deportiva;
     const list = [];
     if (parts.punos) list.push([parts.punos.color, new THREE.Color(st.colors.punos)]);
+    if (parts.capMesh) list.push([parts.capMesh.color, new THREE.Color(st.colors.malla)]);
     if (parts.cord) list.push([parts.cord.color, new THREE.Color(st.colors.punos)]);
     if (parts.lining) list.push([parts.lining.color, new THREE.Color(st.colors.capucha).lerp(new THREE.Color('#847d73'), .07).multiplyScalar(.77)]);
     if (parts.facing) list.push([parts.facing.color, new THREE.Color(st.colors.cuerpo).multiplyScalar(.71)]);
@@ -534,7 +537,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
         grainLayer.relief.value = accessory ? .37 : f.kind === 'fleece' ? .92 : .71;
         material.anisotropy = !accessory && f.kind === 'mesh' ? .12 : 0;
       }
-      if (!material.normalMap) continue;
+      if (!material.normalMap || name === 'capMesh') continue;
       const ribbed = material.normalMap === rib;
       const swatch = accessory ? { normal: twill, surface: twillRoughness } : panelSwatch(f, panelFor(name, st.producto));
       const contact = !accessory && !ribbed && f.panels ? swatch.surface : null;

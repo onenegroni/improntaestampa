@@ -216,11 +216,11 @@ export function imMark(g, x, y, r) {
   g.fillStyle = '#c8161d'; g.beginPath(); g.arc(x, y, r * 0.86, 0, 7); g.fill();
   g.fillStyle = '#fff'; g.font = `italic ${r * 1.25}px "DM Serif Display"`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('im', x - r * 0.04, y - r * 0.08);
 }
-export function drawLogo(g, img, x, y, size) {
+export function drawLogo(g, img, x, y, size, maxHeight = size) {
   if (!img) return;
   const width = img.naturalWidth || img.width, height = img.naturalHeight || img.height;
   if (!width || !height) return;
-  const scale = size / Math.max(width,height);
+  const scale = Math.min(size / width, maxHeight / height);
   const w = width * scale, h = height * scale;
   // Keep the original SVG or bitmap as the source. Rasterize it once into
   // the final sRGB print canvas at its physical atlas-pixel size.
@@ -357,37 +357,18 @@ export function flagCanvas(cv, st) {
   if (st.escuela) { g.font = `600 64px "Barlow Condensed"`; fitText(g, st.escuela.toUpperCase(), s => `600 ${s}px "Barlow Condensed"`, W * 0.7, 64); g.fillText(st.escuela.toUpperCase(), W / 2, H * 0.72); }
   if (st.logoImg) drawLogo(g, st.logoImg, W / 2, H * 0.2, 220); else imMark(g, W / 2, H * 0.2, 80);
 }
-export function capCanvas(cv, st, seams) {
+export function capCanvas(cv, st) {
   const g = cv.context, W = cv.width, H = cv.height;
   drawPattern(g, st.preset, st.colors.cuerpo, pcols(st), W, H, { seed: 41, k: W / 2048 * .7 });
-  const sx = W / 1024;
-  const c = st.colors.cuerpo;
-  // Fine open weave on the four rear panels. The front remains printable.
-  const mesh = new Path2D();
-  for (let y = 3; y < H * .82; y += 7 * sx) {
-    for (let x = sx * (2 + (Math.round(y / (7 * sx)) % 2) * 3); x < W; x += 6 * sx) {
-      if (x > W * .585 && x < W * .915) continue;
-      mesh.moveTo(x + 1.2 * sx, y); mesh.ellipse(x, y, 1.2 * sx, .93 * sx, 0, 0, Math.PI * 2);
-    }
-  }
-  g.fillStyle = lum(c) > .38 ? 'rgba(7,10,11,.32)' : 'rgba(0,0,0,.40)';
-  g.fill(mesh);
-  for (const raw of seams) {
-    const x = (raw % 1) * W;
-    stitch(g, sx, c, () => {
-      line(g, x - 2.6 * sx, 0, x - 2.6 * sx, H);
-      line(g, x + 2.6 * sx, 0, x + 2.6 * sx, H);
-    });
-  }
-  stitch(g, sx, c, () => line(g, 0, H * .936, W, H * .936));
+  stitch(g, W / 1024, st.colors.cuerpo, () => line(g, 0, H * .936, W, H * .936));
   const t = ink(st.preset === 'galactico' ? '#0a0f2a' : st.colors.cuerpo);
-  if (st.logoImg) drawLogo(g, st.logoImg, W * 0.75, H * 0.58, H * 0.34);
-  if (st.espalda) {
+  if (st.logoImg) drawLogo(g, st.logoImg, W * .5, H * .62, W * .39, H * .37);
+  if (st.espalda || st.nombre) {
     g.fillStyle = t;
     g.textAlign = 'center';
-    const caption = st.espalda.toUpperCase();
-    fitText(g, caption, size => `${size}px Anton`, W * 0.17, H * (st.logoImg ? 0.10 : 0.22));
-    g.fillText(caption, W * 0.75, H * (st.logoImg ? 0.37 : 0.60));
+    const caption = (st.espalda || st.nombre).toUpperCase();
+    fitText(g, caption, size => `${size}px Anton`, W * .51, H * (st.logoImg ? .11 : .25));
+    g.fillText(caption, W * .5, H * (st.logoImg ? .43 : .69));
   }
 }
 export function knitNormal(size = 256, kind = 'jersey') {
@@ -473,7 +454,7 @@ export function fabricRoughness(kind, repeat) {
 }
 export function truckerMeshMask() {
   const canvas = document.createElement('canvas');
-  canvas.width = 768;
+  canvas.width = 256;
   canvas.height = 384;
   const context = canvas.getContext('2d');
   const { width, height } = canvas;
@@ -481,19 +462,11 @@ export function truckerMeshMask() {
   context.fillRect(0, 0, width, height);
   context.fillStyle = '#000000';
   context.beginPath();
-  for (let y = 30; y < height - 21; y += 8) {
-    for (let x = 4 + (Math.floor(y / 8) % 2) * 4; x < width; x += 8) {
-      if (x > width * .585 && x < width * .915) continue;
-      const seam = ((x / width - 2 / 3) * 6 + 9) % 1;
-      if (seam > .965 || seam < .035) continue;
-      context.moveTo(x + 2.0, y);
-      context.ellipse(x, y, 2.0, 1.68, 0, 0, Math.PI * 2);
+  for (let y = 19; y < height - 25; y += 9) {
+    for (let x = 7 + (Math.floor(y / 9) % 2) * 4; x < width - 6; x += 8) {
+      context.moveTo(x + 2.4, y);
+      context.ellipse(x, y, 2.4, 2.2, 0, 0, Math.PI * 2);
     }
-  }
-  for (const vent of [.34, .53, .70, .92]) {
-    const x = (1 - vent) * width, y = .47 * height;
-    context.moveTo(x + 2.0, y);
-    context.ellipse(x, y, 2.0, 3.9, 0, 0, Math.PI * 2);
   }
   context.fill();
   const texture = new THREE.CanvasTexture(canvas);
