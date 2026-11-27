@@ -1,12 +1,19 @@
 import { ALL_OVER, LOCAL_DTF, optionsFor } from './product-data.js';
 
 export const PATTERNS = {
-  liso:['Liso','p-lis'], splash:['Splash','p-spl'], degrade:['Degradé','p-deg'], rayas:['Rayas','p-ray'],
+  liso:['Liso','p-lis'], tricolor:['Tricolor','p-tri'], splash:['Splash','p-spl'], degrade:['Degradé','p-deg'], rayas:['Rayas','p-ray'],
   galactico:['Galáctico','p-gal'], tiedye:['Tie-dye','p-tie'], manitos:['Manitos','p-man'], camuflaje:['Camuflaje','p-cam'],
-  geometrico:['Geométrico','p-geo'], tricolor:['Tricolor','p-tri'], diagonal:['Rayas diagonales','p-dia'],
+  geometrico:['Geométrico','p-geo'], diagonal:['Rayas diagonales','p-dia'],
   dinosaurios:['Dinosaurios','p-mot'], planetitas:['Planetitas','p-mot'], estrellas:['Estrellitas','p-mot'],
   heroes:['Héroes originales','p-mot'], doodles:['Doodles','p-mot'], arcoiris:['Arcoíris','p-mot'], egresaditos:['Egresaditos','p-mot'],
 };
+export const TRICOLOR_BANDS = [
+  ['acento', 'Superior', 0, .47],
+  ['acento2', 'Central', .47, .64],
+  ['acento3', 'Inferior', .64, 1],
+];
+export const MOTIF_SIZES = { chico: 'Chico', mediano: 'Mediano', grande: 'Grande' };
+export const hasMotifSizes = preset => PATTERNS[preset][1] === 'p-mot' || preset === 'manitos';
 
 export const PLACEMENTS = {
   'pecho-izq':'Pecho izquierdo', 'pecho-centro':'Centro de pecho', 'pecho-der':'Pecho derecho',

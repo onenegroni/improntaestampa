@@ -38,14 +38,14 @@
 <header class="nav" id="nav"><div class="wrap">
  <a class="brand" href="#top" aria-label="Impronta Estampa, inicio"><svg aria-hidden="true"><use href="#mark"/></svg><span class="wm"><b>IMPRONTA</b><small>ESTAMPA</small></span></a>
  <ul>
-  <li><a href="#configurador">Diseñador 3D</a></li><li><a href="#productos">Productos</a></li><li><a href="#trabajos">Trabajos</a></li><li><a href="#talles">Talles</a></li><li><a href="#contacto">Contacto</a></li>
+  <li><a href="#configurador">Diseñador 3D</a></li><li><a href="#trabajos">Catálogo</a></li><li><a href="#talles">Talles</a></li><li><a href="#contacto">Contacto</a></li>
  </ul>
  <a class="btn btn-ink btn-sm" href="https://wa.me/5492644127431?text=Hola%20Impronta!%20Quiero%20pedir%20un%20presupuesto." target="_blank" rel="noopener"><svg class="wa" aria-hidden="true"><use href="#wa"/></svg>Pedir presupuesto</a>
  <div class="burger"><a class="wab" href="https://wa.me/5492644127431" target="_blank" rel="noopener" aria-label="WhatsApp"><svg class="wa"><use href="#wa"/></svg></a><button id="menuBtn" aria-label="Abrir menú" aria-expanded="false" aria-controls="menu"><i></i><i></i></button></div>
 </div></header>
 <div class="menu" id="menu" role="dialog" aria-modal="true" aria-label="Menú">
  <div class="top"><span class="brand"><svg aria-hidden="true"><use href="#mark"/></svg><span class="wm"><b>IMPRONTA</b><small>ESTAMPA</small></span></span><button class="x" id="menuClose" aria-label="Cerrar menú"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
- <nav><a href="#configurador">Diseñador 3D</a><a href="#productos">Productos</a><a href="#trabajos">Trabajos</a><a href="#talles">Talles</a><a href="#contacto">Contacto</a></nav>
+ <nav><a href="#configurador">Diseñador 3D</a><a href="#trabajos">Catálogo</a><a href="#talles">Talles</a><a href="#contacto">Contacto</a></nav>
  <a class="btn btn-red" href="https://wa.me/5492644127431?text=Hola%20Impronta!%20Quiero%20pedir%20un%20presupuesto." target="_blank" rel="noopener"><svg class="wa" aria-hidden="true"><use href="#wa"/></svg>Pedir presupuesto</a>
 </div>
 
@@ -61,15 +61,6 @@
   <img class="shot" id="heroShot" fetchpriority="high" decoding="async" src="img/impronta-collection-raglan.webp" srcset="img/impronta-collection-raglan-600.webp 600w, img/impronta-collection-raglan-900.webp 900w, img/impronta-collection-raglan.webp 1536w" sizes="(max-width:768px) 100vw, (max-width:959px) 86vw, (max-width:1440px) 62vw, 900px" width="1536" height="1024" alt="Remera tie-dye con el nombre ALDI y campera con estampado de manos con el nombre SANTI, ambas con el logo de Impronta">
  </div>
  <div class="wrap facts rv"><div><b>Full color</b><span>Sublimación, diseño a elección</span></div><div><b>T4 a XXL</b><span>Desde jardín hasta adultos</span></div><div><b>Todo el país</b><span>Envíos desde San Juan</span></div></div>
-</section>
-
-<section class="prod" id="productos" aria-labelledby="prodT">
- <div class="wrap catalogue-heading">
-  <div><h2 id="prodT">Catálogo</h2><p>Prendas personalizadas para egresados, equipos y marcas.</p></div>
-  <a class="btn btn-red" href="#configurador">Diseñá en 3D <span aria-hidden="true">↗</span></a>
- </div>
- <!--CATALOGUE-->
- <div class="wrap"><details class="mats"><summary>Telas y estampado</summary><div class="mgrid"><!--MATERIALS--></div></details></div>
 </section>
 
 <section class="config" id="configurador" aria-labelledby="cfgTitle">
@@ -108,10 +99,11 @@
  </div></div>
 </section>
 
+<div id="productos" class="catalogue-anchor" aria-hidden="true"></div>
 <section class="gallery" id="trabajos" aria-labelledby="galT">
- <div class="wrap shead center"><h2 id="galT">Trabajos realizados</h2></div>
+ <div class="wrap shead center"><h2 id="galT">Catálogo</h2></div>
  <div class="wrap">
- <div class="filters rv" id="filters" role="group" aria-label="Filtrar trabajos"><button aria-pressed="true" data-f="all">Todos</button><button aria-pressed="false" data-f="egresados">Egresados</button><button aria-pressed="false" data-f="inicial">Nivel inicial</button><button aria-pressed="false" data-f="primaria">Primaria</button><button aria-pressed="false" data-f="secundaria">Secundaria</button><button aria-pressed="false" data-f="deportivos">Deportivos</button><button aria-pressed="false" data-f="accesorios">Accesorios</button><button aria-pressed="false" data-f="banderas">Banderas</button><button aria-pressed="false" data-f="3d">Diseños 3D</button><span class="cnt sr" id="gcount" role="status"></span></div>
+ <div class="filters rv" id="filters" role="group" aria-label="Filtrar catálogo"><button aria-pressed="true" data-f="all">Todos</button><button aria-pressed="false" data-f="egresados">Egresados</button><button aria-pressed="false" data-f="inicial">Nivel inicial</button><button aria-pressed="false" data-f="primaria">Primaria</button><button aria-pressed="false" data-f="secundaria">Secundaria</button><button aria-pressed="false" data-f="deportivos">Deportivos</button><button aria-pressed="false" data-f="accesorios">Accesorios</button><button aria-pressed="false" data-f="banderas">Banderas</button><button aria-pressed="false" data-f="3d">Diseños 3D</button><span class="cnt sr" id="gcount" role="status"></span></div>
  <div class="grid" id="grid">
   <figure class="card big rv" data-cat="egresados"><button class="ph2" data-lb="img/egresados-galaxia.webp" aria-label="Ampliar foto"><img src="img/egresados-galaxia.webp" width="1170" height="704" loading="lazy" alt="Campera y remera de egresados con estampado galáctico y nombre MELI"></button><figcaption class="cap"><b>Conjunto galáctico — campera + remera</b><span>Egresados</span></figcaption></figure>
   <!--OWNER-PHOTOS-->
@@ -175,7 +167,7 @@
 <footer><div class="wrap">
  <div class="cols">
   <div><a class="brand" href="#top"><svg aria-hidden="true"><use href="#mark"/></svg><span class="wm"><b>IMPRONTA</b><small>ESTAMPA</small></span></a><p class="d">Remeras, camperas, buzos, egresados y equipos deportivos personalizados. San Juan, Argentina. Envíos a todo el país.</p></div>
-  <div><h6>Productos</h6><ul><li><a href="#productos">Egresados</a></li><li><a href="#productos">Nivel inicial</a></li><li><a href="#productos">Deportivos</a></li><li><a href="#productos">Banderas y gorras</a></li><li><a href="#productos">Empresas</a></li></ul></div>
+  <div><h6>Catálogo</h6><ul><li><a href="#trabajos" data-gallery-filter="egresados">Egresados</a></li><li><a href="#trabajos" data-gallery-filter="inicial">Nivel inicial</a></li><li><a href="#trabajos" data-gallery-filter="deportivos">Deportivos</a></li><li><a href="#trabajos" data-gallery-filter="accesorios">Gorras</a></li><li><a href="#trabajos" data-gallery-filter="banderas">Banderas</a></li></ul></div>
   <div><h6>WhatsApp</h6><ul><li><a href="https://wa.me/5492644127431" target="_blank" rel="noopener">+54 9 264 412-7431</a></li><li><a href="https://wa.me/5492645058266" target="_blank" rel="noopener">+54 9 264 505-8266</a></li><li>Lun a Sáb</li></ul></div>
   <div><h6>Redes</h6><ul><li><a href="https://instagram.com/improntaestampa" target="_blank" rel="noopener">IG @improntaestampa</a></li><li><a href="https://instagram.com/improntaindumentariaestampa" target="_blank" rel="noopener">IG @improntaindumentariaestampa</a></li><li><a href="https://www.facebook.com/search/top?q=Impronta%20Estampa" target="_blank" rel="noopener">FB Impronta Estampa</a></li><li><a href="https://www.facebook.com/search/top?q=Impronta%20Estampados" target="_blank" rel="noopener">FB Impronta Estampados</a></li></ul></div>
  </div>

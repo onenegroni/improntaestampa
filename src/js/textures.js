@@ -1,6 +1,7 @@
 // Canvas textures: print presets, text, logo, knit normal map.
 import * as THREE from './vendor/three.module.min.js';
 import { drawIllustration, illustrations } from './illustrations.js';
+import { TRICOLOR_BANDS } from './design-library.js';
 
 export function lum(hex) { const c = new THREE.Color(hex); return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b; }
 export const ink = hex => (lum(hex) > 0.205 ? '#141414' : '#fafafa');
@@ -173,7 +174,37 @@ function drawMotif(g, kind, x, y, size, color, accent) {
   g.restore();
 }
 
-export function drawPattern(g, preset, base, accentIn, w, h, { seed = 3, k = 1, region = 'body' } = {}) {
+const motifSpacing = { chico: 146, mediano: 198, grande: 266 };
+
+function repeatIllustration(g,preset,base,tones,w,h,k,scale,stretch,R) {
+  const [a,b,c]=tones;
+  const count=Math.max(2,Math.round(w/(k*(motifSpacing[scale] || motifSpacing.mediano))));
+  const step=w/count,rowHeight=step*.88*stretch;
+  const colours={ink:ink(c),a,b,c};
+  const companion={planetitas:'orbitas',estrellas:'destellos'}[preset];
+  for(let row=0;row<=Math.ceil(h/rowHeight);row++){
+    for(let col=0;col<count;col++){
+      const x=((col+.46+(row%2)*.51+(R()-.5)*.23)*step)%w;
+      const y=(row+.25+R()*.28)*rowHeight;
+      const turn=(R()-.5)*.58;
+      const alternate=(row+col*2)%3===1;
+      const kind=alternate && companion ? companion : preset;
+      const size=(alternate && !companion ? .69 : .86)+R()*.15;
+      const inks=alternate && !companion ? {...colours,a:mix(a,c,.38),c:mix(c,base,.21)} : colours;
+      // Wrap stamps across the edges of the UV chart so pattern pieces meet on the seam.
+      for (const offset of [-w,0,w]) {
+        if (x+offset < -step || x+offset > w+step) continue;
+        g.save();g.translate(x+offset,y);g.scale(1,stretch);g.rotate(turn);
+        drawIllustration(g,kind,0,0,step*size,inks);
+        g.restore();
+      }
+      g.fillStyle=mix(base,(row+col)%2?b:a,.66);
+      circle(g,(x+step*.43)%w,y+rowHeight*.34,step*.023);
+    }
+  }
+}
+
+export function drawPattern(g, preset, base, accentIn, w, h, { seed = 3, k = 1, region = 'body', motifScale = 'mediano', sleeveStretch = 0 } = {}) {
   if (preset !== 'tiedye') dyeFields.delete(g);
   const R = rng(seed);
   const [accent, ac2, ac3] = Array.isArray(accentIn) ? accentIn : [accentIn, '#f4f1ec', accentIn];
@@ -181,8 +212,8 @@ export function drawPattern(g, preset, base, accentIn, w, h, { seed = 3, k = 1, 
   g.fillStyle = base; g.fillRect(0, 0, w, h);
   if (preset === 'tricolor') {
     // Both sides and the raglan charts share the same vertical print register.
-    [[accent,0,.47],[ac2,.47,.64],[ac3,.64,1]].forEach(([colour,top,bottom])=>{
-      g.fillStyle=colour;g.fillRect(0,h*top,w,h*(bottom-top)+.4);
+    TRICOLOR_BANDS.forEach(([, ,top,bottom],index)=>{
+      g.fillStyle=[accent,ac2,ac3][index];g.fillRect(0,h*top,w,h*(bottom-top)+.4);
     });
   } else if (preset === 'diagonal') {
     g.translate(w*.50,h*.52);g.rotate(-.37);
@@ -192,16 +223,16 @@ export function drawPattern(g, preset, base, accentIn, w, h, { seed = 3, k = 1, 
       g.fillStyle=ac2;g.fillRect(x+spacing*.35,-h*2,spacing*.033,h*4);
     }
   } else if (Object.prototype.hasOwnProperty.call(illustrations,preset)) {
-    // Keep the chest clear. A quiet hem treatment carries the palette around the garment.
-    const fade=g.createLinearGradient(0,h*.62,0,h);
-    fade.addColorStop(0,base);
-    fade.addColorStop(1,mix(base,ac3,.34));
-    g.fillStyle=fade;g.fillRect(0,h*.62,w,h*.38);
-    for(let i=0;i<Math.round(w/(104*k));i++){
-      const x=(i+.20+R()*.57)*104*k,y=h*(.78+R()*.21);
-      g.globalAlpha=.37+R()*.24;
-      drawMotif(g,'estrellas',x,y,(3+R()*10)*k,i%3===0 ? accent : ac2,base);
-    }
+    const tones=[accent,ac2,ac3];
+    if (sleeveStretch) {
+      // Sleeves use two separate UV charts, with a shorter physical end-to-end axis.
+      for(let panel=0;panel<2;panel++){
+        g.save();g.translate(panel*w*.5,0);
+        g.beginPath();g.rect(0,0,w*.5,h);g.clip();
+        repeatIllustration(g,preset,base,tones,w*.5,h,k,motifScale,sleeveStretch,rng(seed));
+        g.restore();
+      }
+    } else repeatIllustration(g,preset,base,tones,w,h,k,motifScale,1,R);
   } else if (preset === 'galactico') {
     const space=mix('#090d22',base,.47);
     g.fillStyle=space;g.fillRect(0,0,w,h);
@@ -264,10 +295,11 @@ export function drawPattern(g, preset, base, accentIn, w, h, { seed = 3, k = 1, 
   } else if (preset === 'manitos') {
     const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, base); gr.addColorStop(0.55, mix(base, ac3, 0.35)); gr.addColorStop(1, ac3); g.fillStyle = gr; g.fillRect(0, 0, w, h);
     const palette=[accent,ac2,mix(ac2,accent,.65),mix(ac2,'#51948d',.63),mix(base,ac3,.33)];
-    const count=region==='body'?24:10;
+    const scale=(motifSpacing[motifScale] || motifSpacing.mediano)/motifSpacing.mediano;
+    const count=Math.round((region==='body'?34:12)/(scale*scale));
     for(let i=0;i<count;i++){
-      const x=R()*w, y=h*(region==='body'?.59+R()*.40:R());
-      hand(g,R,x,y,(55+R()*33)*k,(R()-.5)*1.9,palette[i%palette.length]);
+      const x=R()*w, y=h*(.15+R()*.82);
+      hand(g,R,x,y,(55+R()*33)*k*scale,(R()-.5)*1.9,palette[i%palette.length]);
     }
   } else if (preset === 'geometrico') {
     const panels = region==='body'?2:1;
@@ -332,15 +364,19 @@ function placementFont(type, size) {
   return `${size}px Anton`;
 }
 function placementBase(design, y, h, base) {
-  if (design.preset === 'tricolor') return y < h*.47 ? design.colors.acento : y < h*.64 ? design.colors.acento2 : design.colors.acento3;
+  if (design.preset === 'tricolor') return design.colors[tricolorBand(y/h)];
   return design.preset === 'galactico' ? '#0a0f2a' : base;
+}
+export function tricolorBand(vertical) {
+  return (TRICOLOR_BANDS.find(([, , ,bottom])=>vertical<bottom) || TRICOLOR_BANDS[2])[0];
 }
 function placedText(g, value, x, y, width, size, design, base) {
   const text = String(value).toUpperCase();
   if (!text) return;
   g.textAlign='center';g.textBaseline='middle';g.fillStyle=ink(base);
   fitText(g,text,s=>placementFont(design.tipografia,s),width,size);
-  const outlined = design.tipografia === 'varsity' || ['splash','geometrico','tricolor','tiedye','doodles'].includes(design.preset);
+  const outlined = design.tipografia === 'varsity' || ['splash','geometrico','tricolor','tiedye','manitos'].includes(design.preset) ||
+    Object.prototype.hasOwnProperty.call(illustrations,design.preset);
   if (outlined) {
     g.lineJoin='round';g.lineWidth=Math.min(6,size*.115);g.strokeStyle=base;
     g.strokeText(text,x,y);
@@ -403,20 +439,8 @@ function torsoPlacements(g, st, product, Y, W, H) {
 }
 export function torsoCanvas(cv, st, { vOf, product }) {
   const W = cv.width, H = cv.height, g = cv.context;
-  drawPattern(g, st.preset, st.colors.cuerpo, pcols(st), W, H, { seed: 11, k: W / 2048, region: 'body' });
+  drawPattern(g, st.preset, st.colors.cuerpo, pcols(st), W, H, { seed: 11, k: W / 2048, motifScale:st.escalaMotivo });
   const Y = y => (1 - vOf(y)) * H;
-  if (Object.prototype.hasOwnProperty.call(illustrations,st.preset)) {
-    const sx=W/2048;
-    const [a,b,c]=pcols(st);
-    const jacket=product==='campera';
-    const colours={ink:ink(c),a,b,c};
-    const main=st.nombreLugar==='pecho-centro' && st.nombre;
-    const x=jacket?(st.logoImg && st.logoLugar!=='pecho-der'?364:654):512;
-    drawIllustration(g,st.preset,x*sx,Y(jacket?-.033:main?-.120:-.068), (jacket?182:446)*sx,colours,1.09);
-    if(!jacket && !main && !st.logoImg && !st.nombreLugar) {
-      st={...st,nombreLugar:'pecho-der',numeroLugar:'espalda-centro'};
-    }
-  }
   if (st.nombreLugar || st.numeroLugar || st.logoLugar || st.espaldaLugar || st.arte || st.tipografia || st.hideAutoMark) {
     torsoPlacements(g, st, product, Y, W, H);
     return;
@@ -476,13 +500,14 @@ export function torsoCanvas(cv, st, { vOf, product }) {
 
 export function plainCanvas(cv, st, zone, { pattern = false, seed = 5 } = {}) {
   const g = cv.context;
-  if (pattern && st.preset !== 'liso') drawPattern(g, st.preset, st.colors[zone], pcols(st), cv.width, cv.height, { seed, k: cv.width / 2048, region: 'side' });
+  const sleeveStretch=zone==='mangas' ? st.producto==='campera' ? .82 : 2.15 : 0;
+  if (pattern && st.preset !== 'liso') drawPattern(g, st.preset, st.colors[zone], pcols(st), cv.width, cv.height, { seed, k: cv.width / 2048, region: 'side', motifScale:st.escalaMotivo, sleeveStretch });
   else { dyeFields.delete(g); g.fillStyle = st.colors[zone]; g.fillRect(0, 0, cv.width, cv.height); }
 }
 export function sleeveCanvas(cv, st) {
   plainCanvas(cv,st,'mangas',{pattern:st.printAll,seed:9});
   const g=cv.context, W=cv.width, H=cv.height;
-  if (st.printAll && st.preset !== 'liso') {
+  if (st.printAll && st.preset !== 'liso' && !Object.prototype.hasOwnProperty.call(illustrations,st.preset)) {
     const canvas=cv.canvas;
     g.drawImage(canvas,0,0,canvas.width,canvas.height,0,0,W*.5,H);
     g.drawImage(canvas,0,0,canvas.width*.5,canvas.height,W*.5,0,W*.5,H);
@@ -516,7 +541,8 @@ export function hoodCanvas(cv, st) {
 export function shortCanvas(cv, st, withoutNumber) {
   const g = cv.context, W = cv.width, H = cv.height;
   const base = st.colors.short;
-  drawPattern(g, st.preset === 'splash' ? 'liso' : st.preset, base, pcols(st), W, H, { seed: 21, k: W / 2048 });
+  const preset=st.preset==='splash' || (st.preset==='tricolor' && st.producto==='conjunto') ? 'liso' : st.preset;
+  drawPattern(g, preset, base, pcols(st), W, H, { seed: 21, k: W / 2048, motifScale:st.escalaMotivo });
   const sx = W / 1024;
   g.fillStyle = st.colors.acento;
   [0, .5, 1].forEach(u => g.fillRect((u - .009) * W, 0, .018 * W, H));
@@ -526,7 +552,7 @@ export function shortCanvas(cv, st, withoutNumber) {
   });
   if (withoutNumber !== cv) withoutNumber.context.drawImage(cv.canvas, 0, 0, W, H);
   if (st.numero) {
-    g.fillStyle = ink(base);
+    g.fillStyle = ink(preset==='tricolor' ? st.colors.acento3 : base);
     g.textAlign = 'center';
     g.font = `${84 * sx}px Anton`;
     g.fillText(String(st.numero).slice(0, 3), W * .31, H * .76);
@@ -534,7 +560,7 @@ export function shortCanvas(cv, st, withoutNumber) {
 }
 export function flagCanvas(cv, st) {
   const g = cv.context, W = cv.width, H = cv.height;
-  drawPattern(g, st.preset, st.colors.cuerpo, pcols(st), W, H, { seed: 31, k: W / 2048 });
+  drawPattern(g, st.preset, st.colors.cuerpo, pcols(st), W, H, { seed: 31, k: W / 2048, motifScale:st.escalaMotivo });
   const trim = W * .014;
   g.fillStyle = 'rgba(17,17,17,.15)';
   g.fillRect(0, 0, W, trim); g.fillRect(0, H - trim, W, trim);
@@ -554,7 +580,7 @@ export function flagCanvas(cv, st) {
 }
 export function capCanvas(cv, st) {
   const g = cv.context, W = cv.width, H = cv.height;
-  drawPattern(g, st.preset, st.colors.cuerpo, pcols(st), W, H, { seed: 41, k: W / 2048 * .7 });
+  drawPattern(g, st.preset, st.colors.cuerpo, pcols(st), W, H, { seed: 41, k: W / 2048 * .7, motifScale:st.escalaMotivo });
   stitch(g, W / 1024, st.colors.cuerpo, () => line(g, 0, H * .936, W, H * .936));
   const base=placementBase(st,H*.60,H,st.colors.cuerpo);
   const text=[...new Set([st.nombre,st.espalda].filter(Boolean))];

@@ -2,7 +2,7 @@
 import { createWheel, normHex } from './colorwheel.js';
 import { segments } from '../data/catalogue.json';
 import { PRODUCTS as P, MATERIALS, TECHNIQUES, LOCAL_DTF, CONSULT, optionsFor, compatiblePrint } from './product-data.js';
-import { ARTWORK, DESIGN_LIBRARY, PATTERNS, PERSONALIZATION, PLACEMENTS, TYPEFACES, availableTemplates, placementChoices } from './design-library.js';
+import { ARTWORK, DESIGN_LIBRARY, MOTIF_SIZES, PATTERNS, PERSONALIZATION, PLACEMENTS, TRICOLOR_BANDS, TYPEFACES, availableTemplates, hasMotifSizes, placementChoices } from './design-library.js';
 import { drawIllustration } from './illustrations.js';
 const CANONICAL_ORIGIN = 'https://improntaestampa.pages.dev/';
 const WA = '5492644127431';
@@ -10,7 +10,7 @@ const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [..
 const PALETTE = [['#141414', 'Negro'], ['#f2efe9', 'Blanco'], ['#6b6b6b', 'Gris'], ['#b5141a', 'Rojo Impronta'], ['#e8742a', 'Naranja'], ['#f2c230', 'Amarillo'], ['#8fd3cf', 'Aqua'], ['#9fc8e8', 'Celeste'], ['#1e2f5c', 'Azul marino'], ['#5b2a86', 'Violeta']];
 const cname = h => (PALETTE.find(p => p[0] === h) || [0, h])[1];
 const PRESETS_P = Object.fromEntries(Object.entries(PATTERNS).map(([id,[label]])=>[id,label]));
-const PCOL = ['acento', 'acento2', 'acento3'];
+const PCOL = TRICOLOR_BANDS.map(([key]) => key);
 const ZONES = ['cuerpo', 'short', 'mangas', 'capucha', 'punos', 'malla'];
 const DEFAULT = { segmento: 'primaria', producto: 'remera', tela: 'deportiva', colors: { cuerpo: '#141414', short: '#141414', malla: '#141414', mangas: '#b5141a', capucha: '#141414', punos: '#f2efe9', acento: '#b5141a', acento2: '#f4f1ec', acento3: '#7a0d12' }, preset: 'splash', printAll: false, nombre: 'MELI', numero: '26', espalda: 'PROMO 26', escuela: 'ESCUELA SARMIENTO', frase: 'Más que una remera, un recuerdo para siempre', talle: 'M', cantidad: '30' };
 const PRESETS = {
@@ -25,7 +25,8 @@ const PRESETS = {
 const clone = value => JSON.parse(JSON.stringify(value));
 const state = clone(DEFAULT);
 const cleanPersonalization = { nombre:'', numero:'', espalda:'', escuela:'', frase:'', mangaDer:'', mangaIzq:'',
-  nombreLugar:'', numeroLugar:'', espaldaLugar:'', logoLugar:'', arteLugar:'', tipografia:'', arte:'', plantilla:'' };
+  nombreLugar:'', numeroLugar:'', espaldaLugar:'', logoLugar:'', arteLugar:'', tipografia:'', arte:'', plantilla:'', escalaMotivo:'mediano' };
+state.escalaMotivo = cleanPersonalization.escalaMotivo;
 const openedDesign = location.hash.startsWith('#d=');
 if (!openedDesign) {
   Object.assign(state, cleanPersonalization, { preset:'liso', tipografia:'moderna', cantidad:'' });
@@ -48,6 +49,7 @@ if (openedDesign) {
     for (const key of Object.keys(PERSONALIZATION)) if (Object.prototype.hasOwnProperty.call(PLACEMENTS,data[key])) state[key]=data[key];
     if (Object.prototype.hasOwnProperty.call(TYPEFACES,data.tipografia)) state.tipografia=data.tipografia;
     if (Object.prototype.hasOwnProperty.call(ARTWORK,data.arte)) state.arte=data.arte;
+    if (Object.prototype.hasOwnProperty.call(MOTIF_SIZES,data.escalaMotivo)) state.escalaMotivo=data.escalaMotivo;
     if (DESIGN_LIBRARY.some(template=>template.id===data.plantilla)) state.plantilla=data.plantilla;
     if (state.producto === 'gorra' && state.talle === 'Único ajustable') state.talle = 'Adulto ajustable';
     if (/^T(?:S|M|L|XL|XXL)$/.test(state.talle)) state.talle = state.talle.slice(1);
@@ -121,16 +123,20 @@ function buildPanel() {
     $('#grp-tela .fab').appendChild(btn({ 'data-v': key }, `<span>${label}</span><small>${detail}</small>`));
   });
 
-  $('#grp-colores').innerHTML = `<h4>Color por zona</h4>
+  $('#grp-colores').innerHTML = `<h4 id="colorZoneTitle">Color por zona</h4>
    <div class="zpills" role="group" aria-label="Zona a colorear"></div>
+   <p class="band-tip" id="bandTip" hidden>Tocá una franja en la prenda para seleccionarla.</p>
    <div class="palette-head"><span id="colorName"></span><button type="button" class="studio-link" id="editColor" aria-controls="slotZone" aria-expanded="false">Color personalizado</button></div>
    <div class="studio-palette" id="palette" role="group" aria-label="Colores rápidos"></div><div id="slotZone"></div>`;
   $('#grp-colores').insertAdjacentHTML('beforeend','<p class="material-technique" id="colourAvailability" hidden>Tonos orientativos. Consultá colores y disponibilidad para tu pedido.</p>');
-  ZONES.forEach(key => $('#grp-colores .zpills').appendChild(btn({ class: 'zp', 'data-z': key }, '<i></i><span></span>')));
+  [...PCOL,...ZONES].forEach(key => $('#grp-colores .zpills').appendChild(btn({ class: 'zp', 'data-z': key }, '<i></i><span></span>')));
   PALETTE.forEach(([hex, name]) => $('#palette').appendChild(btn({'data-hex': hex, 'aria-label': name, title: name}, `<i style="background:${hex}"></i>`)));
   $('#grp-estampa').innerHTML = `<h4>Estampado</h4><div class="prints" role="group" aria-label="Estampado"></div>
    <div id="pcols"><span class="pcl">Colores del estampado</span><div class="pchips">${PCOL.map((key, i) => `<button type="button" class="pc" data-i="${i}" aria-controls="slotPrint" aria-expanded="false"><i></i><span>Color ${i + 1}</span></button>`).join('')}</div></div>
-   <div id="slotPrint"></div><label class="toggle"><input type="checkbox" id="printAll"> <span id="printAllText"></span></label>`;
+   <div id="slotPrint"></div><div id="motifOptions" class="motif-options" hidden>
+    <span class="pcl" id="motifScaleLabel">Tamaño del motivo</span>
+    <div class="design-start" role="group" aria-labelledby="motifScaleLabel">${Object.entries(MOTIF_SIZES).map(([id,label]) => `<button type="button" data-motif-size="${id}" aria-pressed="false">${label}</button>`).join('')}</div>
+   </div><label class="toggle"><input type="checkbox" id="printAll"> <span id="printAllText"></span></label>`;
   Object.entries(PATTERNS).forEach(([key,[label,style]]) => {
     const swatch = style === 'p-mot' ? '<canvas width="140" height="60" aria-hidden="true"></canvas>' : `<i class="${style}"></i>`;
     $('#grp-estampa .prints').appendChild(btn({ 'data-v': key }, `${swatch}<span>${label}</span>`));
@@ -237,6 +243,16 @@ function syncPrintDetails(settings) {
     setSelect(select,[['',`Habitual · ${label}`],...choices.map(choice=>[choice,PLACEMENTS[choice]])],state[field]);
   }
 }
+function editableColors(settings, preset = compatiblePrint(state).preset) {
+  if (preset !== 'tricolor') return settings.zones;
+  const physical = {...settings.zones};
+  delete physical[state.producto === 'short' ? 'short' : 'cuerpo'];
+  if (state.printAll && !settings.product.fixed) {
+    delete physical.mangas;
+    if (physical.capucha) physical.capucha = 'Forro de capucha';
+  }
+  return Object.assign(Object.fromEntries(TRICOLOR_BANDS.map(([key,label]) => [key,label])), physical);
+}
 function sync() {
   const settings = optionsFor(state);
   const { product:pr, segment, materialId, material, technique, zones, patterns, fields, materials } = settings;
@@ -259,18 +275,25 @@ function sync() {
   $('#materialTechnique').textContent = `${method.label} · ${method.description}`;
   syncTemplateShelf(settings);
 
-  if (!zones[zone]) zone = Object.keys(zones)[0];
+  const choices = editableColors(settings, display.preset);
+  if (!choices[zone]) {
+    if (active?.kind === 'zone') closeWheel();
+    zone = Object.keys(choices)[0];
+  }
+  $('#colorZoneTitle').textContent = display.preset === 'tricolor' ? 'Franjas y zonas' : 'Color por zona';
+  $('#bandTip').hidden = display.preset !== 'tricolor';
   const customZone = active?.kind === 'zone';
   $$('#grp-colores .zp').forEach(button => {
     const key = button.dataset.z;
-    const label = zones[key];
+    const label = choices[key];
     button.hidden = !label;
     button.querySelector('span').textContent = label || '';
     button.querySelector('i').style.background = state.colors[key];
     button.setAttribute('aria-pressed', key === zone);
   });
   const color = state.colors[zone];
-  $('#colorName').textContent = cname(color) === color ? color.toUpperCase() : cname(color);
+  const colorName = cname(color) === color ? color.toUpperCase() : cname(color);
+  $('#colorName').textContent = PCOL.includes(zone) ? `${choices[zone]} · ${colorName}` : colorName;
   $$('#palette button').forEach(button => {
     button.hidden = Boolean(material?.previewColors && !material.previewColors.includes(button.dataset.hex));
     button.setAttribute('aria-pressed', button.dataset.hex === color);
@@ -281,13 +304,14 @@ function sync() {
 
   const plain = display.preset === 'liso';
   $('#grp-estampa').hidden = !patterns;
-  $('#pcols').hidden = plain;
-  if (plain && active?.kind === 'print') closeWheel();
+  $('#pcols').hidden = plain || display.preset === 'tricolor';
+  if ($('#pcols').hidden && active?.kind === 'print') closeWheel();
   $$('#pcols .pc').forEach((button, i) => {
     button.querySelector('i').style.background = state.colors[PCOL[i]];
-    button.querySelector('span').textContent = state.preset === 'tricolor' ? ['Superior','Central','Inferior'][i] : `Color ${i+1}`;
     button.setAttribute('aria-expanded', active?.kind === 'print' && active.i === i);
   });
+  $('#motifOptions').hidden = !hasMotifSizes(display.preset);
+  $$('[data-motif-size]').forEach(button => button.setAttribute('aria-pressed',button.dataset.motifSize === state.escalaMotivo));
   $$('#grp-estampa .prints button').forEach(button => {
     const canvas = button.querySelector('canvas');
     const illustrated = Boolean(canvas);
@@ -302,7 +326,10 @@ function sync() {
       g.fillStyle=cuerpo;g.fillRect(0,0,140,60);
       const n=Number.parseInt(acento3.slice(1),16);
       const brightness=((n>>16)*299+((n>>8)&255)*587+(n&255)*114)/1000;
-      drawIllustration(g,button.dataset.v,70,30,59,{ink:brightness>130?'#242228':'#fff5e6',a:acento,b:acento2,c:acento3});
+      const inks={ink:brightness>130?'#242228':'#fff5e6',a:acento,b:acento2,c:acento3};
+      drawIllustration(g,button.dataset.v,28,35,35,inks);
+      drawIllustration(g,button.dataset.v,70,26,46,inks);
+      drawIllustration(g,button.dataset.v,112,35,35,inks);
       return;
     }
     const swatch = button.querySelector('i').style;
@@ -373,7 +400,7 @@ function waLink() {
   const {product:pr,segment, zones:z, material, technique, fields, patterns} = settings;
   const design = compatiblePrint(state);
   const hx = h => { const n = cname(h); return h.toUpperCase() + (n !== h ? ` (${n})` : ''); };
-  const cols = Object.entries(z).map(([k, l]) => `${l}: ${hx(design.colors[k])}`);
+  const cols = Object.entries(editableColors(settings,design.preset)).map(([k,l]) => `${PCOL.includes(k) ? 'Franja ' + l.toLowerCase() : l}: ${hx(design.colors[k])}`);
   const template = availableTemplates(state).find(value=>value.id===state.plantilla);
   const place = key => placementChoices(settings,key).includes(design[key]) ? ` · ${PLACEMENTS[design[key]].toLowerCase()}` : '';
   const L = [
@@ -382,7 +409,8 @@ function waLink() {
     `• Técnica: ${TECHNIQUES[technique].label}`, `• Colores por zona: ${cols.join(' · ')}`,
     template && `• Diseño base: ${template.label}`,
     patterns && `• Estampado: ${PRESETS_P[design.preset]}${design.printAll && design.preset !== 'liso' && z.mangas && !pr.fixed ? (z.capucha ? ' (incluye mangas y capucha)' : ' (incluye mangas)') : ''}`,
-    design.preset !== 'liso' && `• Colores del estampado: ${PCOL.map((k, i) => `${i + 1}) ${hx(design.colors[k])}`).join(' · ')}`,
+    design.preset !== 'liso' && design.preset !== 'tricolor' && `• Colores del estampado: ${PCOL.map((k, i) => `${i + 1}) ${hx(design.colors[k])}`).join(' · ')}`,
+    hasMotifSizes(design.preset) && `• Tamaño del motivo: ${MOTIF_SIZES[design.escalaMotivo]}`,
     fields.includes('nombre') && design.nombre && `• Nombre: ${design.nombre}${place('nombreLugar')}`, fields.includes('numero') && design.numero && `• Número: ${design.numero}${place('numeroLugar')}`,
     fields.includes('espalda') && design.espalda && `• ${pr.fixed ? 'Texto principal' : 'Texto espalda'}: ${design.espalda}${place('espaldaLugar')}`,
     fields.includes('escuela') && design.escuela && `• Escuela / curso: ${design.escuela}`, fields.includes('frase') && design.frase && `• Frase: ${design.frase}`,
@@ -427,13 +455,25 @@ function wire() {
     if (hex) { state.colors[zone] = hex; wheel.set(hex); sync(); liveRepaint(true); }
     if (button.id === 'editColor') {
       if (active?.kind === 'zone') closeWheel();
-      else openWheel({ kind: 'zone', key: zone }, $('#slotZone'), optionsFor(state).zones[zone]);
+      else openWheel({ kind: 'zone', key: zone }, $('#slotZone'), editableColors(optionsFor(state))[zone]);
     }
     if (button.matches('.pc')) {
       if (active?.kind === 'print' && active.i === Number(i)) closeWheel();
       else openWheel({ kind: 'print', key: PCOL[i], i: Number(i) }, $('#slotPrint'), button.textContent.trim());
     }
-    if (button.closest('.prints') && optionsFor(state).patterns) { state.preset = v; sync(); api?.repaint(); }
+    if (button.dataset.motifSize) {
+      state.escalaMotivo = button.dataset.motifSize;
+      sync();
+      api?.repaint();
+    }
+    if (button.closest('.prints') && optionsFor(state).patterns) {
+      closeWheel();
+      state.preset = v;
+      if (v === 'tricolor') zone = PCOL[0];
+      sync();
+      api?.repaint();
+      if (v === 'tricolor') groups.scrollTop = 0;
+    }
     if (button.closest('.sizes')) { state.talle = v; sync(); if (state.producto === 'bandera' || state.producto === 'gorra') api?.rebuild(false); }
     if (button.id === 'clearText') {
       $$('#grp-texto .field:not([hidden]) input').forEach(input => { state[input.dataset.k] = ''; });
@@ -584,7 +624,7 @@ function closeWheel() {
   $$('.pc').forEach(button => button.setAttribute('aria-expanded', 'false'));
 }
 function selectZone(key, from3D = false) {
-  const label = optionsFor(state).zones[key];
+  const label = editableColors(optionsFor(state))[key];
   if (!label) return;
   if (from3D && STEPS[currentStep].id !== 'color') selectStep(1);
   if (active?.kind === 'print') closeWheel();
@@ -594,7 +634,7 @@ function selectZone(key, from3D = false) {
     wheel.open($('#slotZone'), label, state.colors[key]);
   }
   sync();
-  api?.highlight(key, true);
+  api?.highlight(PCOL.includes(key) ? null : key, true);
   if (from3D) groups.scrollTop = 0;
 }
 function openWheel(selection, slot, title) {
@@ -861,13 +901,15 @@ function setFilter(filter) {
   }
   $('#gcount').textContent = `Mostrando ${visible} de ${cards.length}`;
 }
-$('#filters').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setFilter(b.dataset.f); });
-$('#productos').addEventListener('click', event => {
-  const trigger = event.target.closest('[data-catalogue-photo]');
-  if (!trigger) return;
-  const original = $('#grid [data-owner-photo="' + trigger.dataset.cataloguePhoto + '"] button');
-  openLb([{src:original.dataset.lb,name:original.closest('.card').querySelector('figcaption b').textContent}],0,trigger);
+$$('#grid .card').forEach(card => {
+  const image = card.querySelector('img');
+  const ratio = Number(image.getAttribute('width')) / Number(image.getAttribute('height'));
+  if (!Number.isFinite(ratio) || ratio <= 0) return;
+  card.style.setProperty('--photo-ratio', ratio);
+  card.classList.toggle('landscape', ratio >= 1.26);
 });
+$('#filters').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setFilter(b.dataset.f); });
+$$('[data-gallery-filter]').forEach(link => link.addEventListener('click', () => setFilter(link.dataset.galleryFilter)));
 
 /* ---------- nav, menu, reveal, parallax ---------- */
 const nav = $('#nav'), fab = $('#fabWa'), heroEl = $('#hero'); const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -896,7 +938,7 @@ const rio = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersectin
 $$('.rv,.split').forEach(el => rio.observe(el));
 window.__appOK = true; // the inline failsafe in <head> reveals everything if we never get here
 /* scroll-spy: the active link is the section that contains a probe line 35% down the viewport (position-based, no IO ordering issues) */
-const spyIds = ['configurador', 'trabajos', 'productos', 'talles', 'contacto'].filter(id => document.querySelector(`.nav ul a[href="#${id}"]`));
+const spyIds = ['configurador', 'trabajos', 'talles', 'contacto'];
 const spyLinks = $$('.nav ul a'); let spyCur = null, spyT = false;
 function spy() {
   spyT = false; const probe = innerHeight * 0.35; let cur = null;

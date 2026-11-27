@@ -116,9 +116,25 @@ function constellation(g,{ink,a,b,c}) {
   for(const [x,y] of [[70,94],[86,55],[142,93],[100,77],[128,118],[53,116],[149,133]]) oval(g,x,y,1.7,1.7,ink);
 }
 
+function ringedPlanet(g, {ink, a, b, c}) {
+  oval(g,100,103,49,49,c);
+  draw(g,'M64 70q35 1 75 24m-82-4q29-3 71 21m-67-3q23 1 48 15',null,a,6);
+  g.save();g.translate(100,103);g.rotate(-.37);
+  g.beginPath();g.ellipse(0,0,79,22,0,0,Math.PI);g.lineWidth=11;g.strokeStyle=ink;g.stroke();
+  g.beginPath();g.ellipse(0,0,79,22,0,0,Math.PI);g.lineWidth=6;g.strokeStyle=b;g.stroke();
+  g.restore();
+  sparkles(g,[[48,52,.49],[159,57,.44],[150,134,.34]],b);
+}
+function stardust(g,{ink,a,b,c}) {
+  g.save();g.translate(102,100);g.scale(3,3);
+  draw(g,sparkle,b,a,1.55);g.restore();
+  sparkles(g,[[60,65,.82],[142,68,.56],[143,136,1],[61,126,.49]],c);
+  oval(g,84,42,3,3,ink);oval(g,163,112,3.3,3.3,ink);
+}
+
 export const illustrations = {
   heroes: superhero, dinosaurios: dinosaur, planetitas: rocket, doodles: monsters,
-  egresaditos: graduate, arcoiris: rainbow, estrellas: constellation,
+  egresaditos: graduate, arcoiris: rainbow, estrellas: constellation, orbitas: ringedPlanet, destellos: stardust,
 };
 
 export function drawIllustration(g, kind, x, y, size, colors, stretch = 1) {

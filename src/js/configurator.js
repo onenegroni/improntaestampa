@@ -504,7 +504,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
     if (names.includes('visor')) T.plainCanvas(get('visor'), st, 'mangas');
   }
   function printSignature(name, st) {
-    const accents = [st.preset, ...T.pcols(st)];
+    const accents = [st.preset,st.escalaMotivo,...T.pcols(st)];
     const sidePrint = st.printAll ? accents : [];
     const text = [st.nombre,st.numero,st.espalda,st.escuela,st.frase,st.tipografia,st.arte,
       st.nombreLugar,st.numeroLugar,st.espaldaLugar,st.logoLugar,st.arteLugar];
@@ -518,7 +518,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       }
       case 'hood': return [st.colors.capucha, ...sidePrint];
       case 'short':
-      case 'shortPlain': return [st.colors.short, ...accents, st.numero];
+      case 'shortPlain': return [st.producto, st.colors.short, ...accents, st.numero];
       case 'flag': return [st.colors.cuerpo, ...accents, st.espalda, st.escuela];
       case 'cap': return [st.colors.cuerpo, ...accents, st.espalda, st.nombre, st.tipografia];
       default: return [st.colors.mangas];
@@ -649,10 +649,22 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   function zoneOf(mat) {
     return ZONES.find(z => ZONE_MATERIALS[z].some(name => parts[name] === mat)) || null;
   }
-  function pick(cx, cy) {
+  function pick(cx, cy, bands = false) {
     const r = el.getBoundingClientRect(); ndc.set((cx - r.left) / r.width * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
     spin.updateMatrixWorld(true); cam.updateMatrixWorld(); ray.setFromCamera(ndc, cam);
-    const ok = zonesFn(); for (const h of ray.intersectObject(product, true)) { const z = zoneOf(h.object.material); if (z && ok.includes(z)) return z; if (!z) continue; }
+    const ok = zonesFn();
+    const tricolor = bands && state.preset === 'tricolor' && optionsFor(state).patterns;
+    for (const hit of ray.intersectObject(product,true)) {
+      const material=hit.object.material;
+      const zone=zoneOf(material);
+      if (!zone || !ok.includes(zone)) continue;
+      if (tricolor && hit.uv && (
+        [parts.torso,parts.cap,parts.flag].includes(material) ||
+        (state.producto==='short' && [parts.short,parts.shortPlain].includes(material)) ||
+        (state.printAll && [parts.sleeve,parts.hood].includes(material))
+      )) return T.tricolorBand(1-hit.uv.y);
+      return zone;
+    }
     return null;
   }
   function applyHL() {
@@ -670,7 +682,7 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
   el.addEventListener('pointermove', e => { if (tap && tap.id === e.pointerId) tap.moved = Math.max(tap.moved, Math.hypot(e.clientX - tap.x, e.clientY - tap.y)); if (tap && ptrs.size > 1) tap = null; }, true);
   el.addEventListener('pointerup', e => {
     const t = tap; tap = null; if (!t || t.id !== e.pointerId || t.moved >= 6 || performance.now() - t.t > 700 || !inited) return;
-    const z = pick(e.clientX, e.clientY); if (z && zoneCb) { vel = 0; view.targetYaw = spin.rotation.y; zoneCb(z); }
+    const z = pick(e.clientX, e.clientY, true); if (z && zoneCb) { vel = 0; view.targetYaw = spin.rotation.y; zoneCb(z); }
   }, true);
   el.addEventListener('pointercancel', () => { tap = null; }, true);
   el.addEventListener('pointerdown', e => { wake(); try { el.setPointerCapture(e.pointerId); } catch (err) { } ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY }); view.auto = false; emit(); el.style.cursor = 'grabbing'; if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); zoom0 = view.zoom; } });
@@ -910,7 +922,17 @@ export function createConfigurator(canvasHost, state, { onReady, onError, onLost
       applyHL();
       wake();
     },
-    pickAt: (x, y) => pick(x, y), zoneScreenPoint(z) { const ms = []; product.traverse(o => { if (o.isMesh && zoneMats(z).includes(o.material)) ms.push(o); }); if (!ms.length) return null; const r = el.getBoundingClientRect();
-      for (let i = 0; i < 400; i++) { const x = r.left + r.width * (0.06 + 0.88 * ((0.5 + i * 0.7548777) % 1)), y = r.top + r.height * (0.06 + 0.88 * ((0.5 + i * 0.5698403) % 1)); if (pick(x, y) === z) return { x, y }; } return null; },
+    pickAt: (x, y) => pick(x, y, true),
+    zoneScreenPoint(z) {
+      const band=z.startsWith('acento');
+      if (!band && !zoneMats(z).length) return null;
+      const r=el.getBoundingClientRect();
+      for (let i=0;i<400;i++) {
+        const x=r.left+r.width*(.06+.88*((.5+i*.7548777)%1));
+        const y=r.top+r.height*(.06+.88*((.5+i*.5698403)%1));
+        if (pick(x,y,band)===z) return {x,y};
+      }
+      return null;
+    },
   };
 }

@@ -24,9 +24,10 @@ async function run(browser, mobile) {
   try {
     await page.goto(base);
     assert.equal(await page.evaluate(() => scrollY), 0);
-    assert.equal(await page.locator('#productos a[href="#configurador"]').count(),1);
+    assert.deepEqual(await page.locator('main > section').evaluateAll(sections=>sections.slice(0,3).map(section=>section.id)),['hero','configurador','trabajos']);
+    assert.equal(await page.locator('#galT').textContent(),'Catálogo');
     assert.equal(await page.locator('[data-owner-photo]').count(),11);
-    await page.locator('#catalogo-inicial button[data-catalogue-photo]').click();
+    await page.locator('[data-owner-photo=egresaditos-celeste] button').click();
     await page.locator('#lb').waitFor({state:'visible'});
     assert.match(await page.locator('#lb .stage img').getAttribute('src'),/egresaditos-celeste\.webp$/);
     await page.keyboard.press('Escape');
@@ -39,7 +40,7 @@ async function run(browser, mobile) {
       assert.equal(await page.evaluate(() => document.activeElement.textContent.trim()), 'Pedir presupuesto');
       await page.keyboard.press('Escape');
       await page.waitForFunction(() => document.activeElement.id === 'menuBtn');
-      await page.locator('#productos a[href="#configurador"]').click();
+      await page.locator('#openDz').click();
       assert.equal(await page.getByRole('dialog', { name: 'Estudio de diseño' }).isVisible(), true);
       assert.equal(await page.locator('#crumbT').textContent(), 'Remera personalizada');
     }
@@ -240,6 +241,13 @@ async function run(browser, mobile) {
     const heroesImage=heroes.locator('img');
     assert.match(await heroesImage.getAttribute('src'),/heroes-campera\.webp$/);
     await heroesImage.evaluate(image=>image.decode());
+    await heroes.click();
+    await page.getByRole('tab',{name:'Color',exact:true}).click();
+    await page.locator('[data-motif-size=grande]').click();
+    assert.equal(await studioState(page,'escalaMotivo'),'grande');
+    const motifQuote=new URL(await page.locator('#waBtn').getAttribute('href')).searchParams.get('text');
+    assert.match(motifQuote,/Tamaño del motivo: Grande/);
+    await page.getByRole('tab',{name:'Modelo',exact:true}).click();
     await page.locator('#templateCollection').selectOption('primaria');
     const tricolor=page.locator('[data-template=tricolor]');
     await tricolor.click();
@@ -247,11 +255,22 @@ async function run(browser, mobile) {
     assert.equal(await studioState(page,'preset'),'tricolor');
     await tricolor.locator('img').evaluate(image=>image.decode());
     await page.getByRole('tab',{name:'Color',exact:true}).click();
-    assert.deepEqual(await page.locator('#pcols .pc span').allTextContents(),['Superior','Central','Inferior']);
-    await page.locator('#pcols [data-i="1"]').click();
-    await page.locator('#slotPrint .cw-hex').fill('#EFC087');
-    await page.locator('#slotPrint .cw-hex').press('Enter');
+    assert.deepEqual(await page.locator('.zp[data-z^=acento]:visible span').allTextContents(),['Superior','Central','Inferior']);
+    await page.locator('.zp[data-z=acento]').click();
+    await page.locator('#palette [data-hex="#141414"]').click();
+    await page.locator('.zp[data-z=acento3]').click();
+    await page.locator('#palette [data-hex="#b5141a"]').click();
+    await page.locator('#seg [data-yaw="0"]').click();
+    const band=await (await page.waitForFunction(()=>window.__impronta.api.zoneScreenPoint('acento2'))).jsonValue();
+    if (mobile) await page.touchscreen.tap(band.x,band.y);
+    else await page.mouse.click(band.x,band.y);
+    await page.waitForFunction(()=>document.querySelector('.zp[data-z=acento2]').getAttribute('aria-pressed')==='true');
+    await page.locator('#editColor').click();
+    await page.locator('#slotZone .cw-hex').fill('#EFC087');
+    await page.locator('#slotZone .cw-hex').press('Enter');
+    assert.equal(await studioState(page,'colors.acento'),'#141414');
     assert.equal(await studioState(page,'colors.acento2'),'#efc087');
+    assert.equal(await studioState(page,'colors.acento3'),'#b5141a');
     await page.getByRole('tab',{name:'Detalles',exact:true}).click();
     await page.locator('#fNombre').fill('ALDI');
     await page.locator('#sleeveLeft').fill('AM');

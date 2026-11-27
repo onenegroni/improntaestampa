@@ -6,26 +6,8 @@ const S = path.join(__dirname, 'src'), O = path.join(__dirname, 'site');
 const common = { bundle: true, format: 'iife', minify: true, target: ['es2018', 'safari12', 'ios12', 'chrome70', 'firefox68'], legalComments: 'inline', logLevel: 'warning' };
 const escapeHtml = value => String(value).replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[character]);
 const photoPath = (id, preview = false) => `img/trabajos/${id}${preview ? '-680' : ''}.webp`;
-const arrow = '<span aria-hidden="true">›</span>';
-function retailCard(card, nested = false) {
-  const photo = card.photo && catalogue.photos.find(([id]) => id === card.photo);
-  const img = (src, width, height, alt) => `<img class="pimg" src="${src}" width="${width}" height="${height}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async">`;
-  const image = photo ? `<button class="catalogue-media" type="button" data-catalogue-photo="${photo[0]}" aria-label="Ampliar foto de ${escapeHtml(card.title)}">${img(photoPath(photo[0],true),photo[4],photo[5],photo[3])}</button>`
-    : card.image ? `<div class="catalogue-media">${img('img/'+card.image,840,840,card.alt)}</div>` : '';
-  const enquiry = card.enquiry ? `<a class="more" href="https://wa.me/5492644127431?text=${encodeURIComponent(card.enquiry[1])}" target="_blank" rel="noopener">${escapeHtml(card.enquiry[0])} ${arrow}</a>` : '';
-  const heading = nested ? 'h4' : 'h3';
-  return `<article class="pitem${image ? '' : ' catalogue-text'}" id="catalogo-${card.id}">${image}<div class="catalogue-copy"><${heading}>${escapeHtml(card.title)}</${heading}><p>${escapeHtml(card.copy)}</p>${enquiry}</div></article>`;
-}
-function renderCatalogue() {
-  return `<section class="catalogue-graduation" id="catalogo-egresados" aria-labelledby="egresados-title"><div class="wrap catalogue-intro"><h3 id="egresados-title">Egresados</h3></div><div class="wrap product-gallery"><div class="product-list">${catalogue.graduation.map(card=>retailCard(card,true)).join('')}</div></div></section>
-  <div class="wrap product-gallery catalogue-services"><div class="product-list">${catalogue.categories.map(card=>retailCard(card)).join('')}</div></div>`;
-}
 function renderOwnerPhotos() {
   return catalogue.photos.map(([id,category,title,alt,width,height]) => `<figure class="card rv" data-cat="${category}" data-owner-photo="${id}"><button class="ph2" data-lb="${photoPath(id)}" aria-label="Ampliar foto de ${escapeHtml(title)}"><img src="${photoPath(id,true)}" width="${width}" height="${height}" loading="lazy" decoding="async" alt="${escapeHtml(alt)}"></button><figcaption class="cap"><b>${escapeHtml(title)}</b><span>${escapeHtml(catalogue.segments[category])}</span></figcaption></figure>`).join('\n');
-}
-function renderMaterials() {
-  return Object.values(materials).filter(({status})=>status === 'disponible')
-    .map(({label,detail})=>`<div><h5>${escapeHtml(label)}</h5><p>${escapeHtml(detail)}</p></div>`).join('');
 }
 (async () => {
   for (const f of ['main.js','configurator.js','garments.js','textures.js']) fs.rmSync(path.join(O,'js',f),{force:true});
@@ -47,8 +29,8 @@ function renderMaterials() {
   fs.writeFileSync(path.join(O, 'css/fonts-inline.css'), (await esbuild.transform(facesInline, { loader: 'css', minify: true })).code);
   const html = fs.readFileSync(path.join(S, 'index.html'), 'utf8').replace('FACES', () => JSON.stringify(fr).replace(/</g, '\\u003c'))
     .replace('<!--CSS-->', () => `<style>${r.code.replace(/<\/style/gi, '<\\/style')}</style>`)
-    .replace('<!--CATALOGUE-->',renderCatalogue).replace('<!--OWNER-PHOTOS-->',renderOwnerPhotos)
-    .replace('<!--MATERIALS-->',renderMaterials).replace('<!--DEFAULT-FABRIC-->',escapeHtml(materials.deportiva.label));
+    .replace('<!--OWNER-PHOTOS-->',renderOwnerPhotos)
+    .replace('<!--DEFAULT-FABRIC-->',escapeHtml(materials.deportiva.label));
   fs.writeFileSync(path.join(O, 'index.html'), html);
   for (const f of ['index.html','js/app.js','js/studio.js','css/styles.css','css/fonts-inline.css']) console.log(f, (fs.statSync(path.join(O,f)).size/1024).toFixed(0)+' KB');
 })().catch(e => { console.error(e); process.exit(1); });
